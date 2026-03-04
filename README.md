@@ -6,6 +6,20 @@
 
 *Describe some of the main selling points of your extension.*
 
+### Clothing inclusion rules
+
+| Prompt type | Included clothing scope | Notes |
+| --- | --- | --- |
+| Character description generation | Everything | Includes full clothing context (including covered/underneath context where applicable). |
+| Image prompt generation (portrait/scene/etc.) | Visible only | Hidden/covered items are not included. |
+| Image-generator prompt helper/completion | Visible only | Always text-oriented summary of visible clothing only. |
+| Chat message injection | Everything | Injected clothing context includes full state for continuity. |
+
+### Chat history filtering for extension LLM requests
+
+- Messages marked as invisible for AI (ghost icon in UI) are excluded from chat history sent by this extension.
+- History limit is counted by assistant replies; user/system messages between those replies are included.
+
 ## Installation and Usage
 
 ### Installation

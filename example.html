@@ -3,17 +3,145 @@
 <div class="example-extension-settings">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>Extension Example</b>
+            <b>CHARacter MANager DERedere</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
-            <div class="example-extension_block flex-container">
-                <input id="my_button" class="menu_button" type="submit" value="Example Button" />
+            <div class="example-extension_block flex-container flexFlowColumn gap10h5v">
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Descriptions prompt</span>
+                        <button id="reset-descriptions-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="descriptions_prompt" class="text_pole" rows="10"></textarea>
+                </div>
             </div>
 
-            <div class="example-extension_block flex-container">
-                <input id="example_setting" type="checkbox" />
-                <label for="example_setting">This is an example</label>
+            <div class="example-extension_block flex-container flexFlowColumn gap10h5v">
+                <div class="custom-fields-settings">
+                    <div class="custom-fields-settings__title">Additional fields</div>
+                    <div id="custom-fields-list" class="custom-fields-list"></div>
+                    <button id="custom-fields-add" class="menu_button" type="button">Add field</button>
+                </div>
+            </div>
+
+            <div class="example-extension_block flex-container flexFlowColumn gap10h5v">
+                <label class="checkbox_label" for="show_image_generation_buttons">
+                    <input id="show_image_generation_buttons" type="checkbox" />
+                    <span>Show image generation buttons</span>
+                </label>
+                <label class="checkbox_label" for="auto_add_persona_character_for_new_chat">
+                    <input id="auto_add_persona_character_for_new_chat" type="checkbox" />
+                    <span>Auto-add persona character for new chat, if exists</span>
+                </label>
+                <label for="switcher_character_limit" class="flex-container flexFlowColumn">
+                    <span>Switcher character limit</span>
+                    <input id="switcher_character_limit" class="text_pole" type="number" min="1" max="50" step="1" />
+                </label>
+                <label for="llm_history_message_limit" class="flex-container flexFlowColumn">
+                    <span>LLM chat history: keep last N assistant replies (+ messages between); 0 = unlimited</span>
+                    <input id="llm_history_message_limit" class="text_pole" type="number" min="0" max="200" step="1" />
+                </label>
+                <label class="checkbox_label" for="llm_clothing_plain_text">
+                    <input id="llm_clothing_plain_text" type="checkbox" />
+                    <span>Attach clothing to LLM as plain text (instead of JSON)</span>
+                </label>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span id="clothing_interpretation_prompt_label">Clothing interpretation prompt (JSON)</span>
+                        <button id="reset-clothing-interpretation-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="clothing_interpretation_prompt" class="text_pole" rows="9"></textarea>
+                </div>
+                <label class="checkbox_label" for="use_crop_tool_for_avatars">
+                    <input id="use_crop_tool_for_avatars" type="checkbox" />
+                    <span>Use crop tool for avatars</span>
+                </label>
+                <div id="image-generation-required-note" class="custom-settings-note displayNone">
+                    Required: Image Generation built-in extension (Optional modules: sd).
+                </div>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Visual command start</span>
+                        <button id="reset-visual-command-start-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="visual_command_start" class="text_pole" rows="8"></textarea>
+                </div>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Closeup portrait prompt</span>
+                        <button id="reset-closeup-portrait-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="closeup_portrait_prompt" class="text_pole" rows="6"></textarea>
+                </div>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Full body portrait prompt</span>
+                        <button id="reset-full-body-portrait-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="full_body_portrait_prompt" class="text_pole" rows="6"></textarea>
+                </div>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Describe background prompt</span>
+                        <button id="reset-describe-background-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="describe_background_prompt" class="text_pole" rows="7"></textarea>
+                </div>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Describe view from viewer's eyes prompt</span>
+                        <button id="reset-describe-viewer-eyes-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="describe_viewer_eyes_prompt" class="text_pole" rows="10"></textarea>
+                </div>
+                <div class="flex-container flexFlowColumn">
+                    <div class="title_restorable">
+                        <span>Describe current scene prompt</span>
+                        <button id="reset-describe-current-scene-prompt" class="menu_button" type="button" title="Reset prompt to default">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+                    <textarea id="describe_current_scene_prompt" class="text_pole" rows="9"></textarea>
+                </div>
+
+                <div class="custom-fields-settings">
+                    <div class="custom-fields-settings__title">Custom resolutions</div>
+                    <label for="custom-resolution-portrait" class="flex-container flexFlowColumn">
+                        <span>Portrait</span>
+                        <select id="custom-resolution-portrait" class="text_pole"></select>
+                    </label>
+                    <label for="custom-resolution-fullbody" class="flex-container flexFlowColumn">
+                        <span>Full body</span>
+                        <select id="custom-resolution-fullbody" class="text_pole"></select>
+                    </label>
+                    <label for="custom-resolution-background" class="flex-container flexFlowColumn">
+                        <span>Background</span>
+                        <select id="custom-resolution-background" class="text_pole"></select>
+                    </label>
+                    <label for="custom-resolution-viewer-eyes" class="flex-container flexFlowColumn">
+                        <span>View from viewer's eyes</span>
+                        <select id="custom-resolution-viewer-eyes" class="text_pole"></select>
+                    </label>
+                    <label for="custom-resolution-scene" class="flex-container flexFlowColumn">
+                        <span>Current scene</span>
+                        <select id="custom-resolution-scene" class="text_pole"></select>
+                    </label>
+                </div>
             </div>
 
             <hr class="sysHR" />
