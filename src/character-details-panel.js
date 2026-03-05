@@ -29,18 +29,38 @@ let footerRoot = null;
 let floatingRoot = null;
 let managerRoot = null;
 let panelContainerRoot = null;
+let modsPanelContainerRoot = null;
 let mobileDrawerToggleButton = null;
+let mobileDrawerLeftToggleButton = null;
+let modsPanelRoot = null;
+let modsAddButton = null;
 let customFieldRefreshTimer = null;
 let draggedLayerId = null;
+let draggedModId = null;
+let openModImageTypesForId = null;
 let managerExpanded = false;
 let mobileDrawerOpen = false;
+let mobileDrawerLeftOpen = false;
 let mobileDrawerBindingsInitialized = false;
+let mobileDrawerLeftBindingsInitialized = false;
 let activeImageGeneration = null;
 const extensionName = "st-extension-example";
 const PERSONA_CHARACTER_STORAGE_KEY = "characterDetailsPersonaCharacters";
 const FORBIDDEN_NAME_CHARS = /[\[\]\/|]/g;
 
 const MOBILE_DRAWER_MEDIA_QUERY = "(max-width: 1000px)";
+const MOD_SHORTNAME_MAX_LENGTH = 50;
+const MOD_POSITION_START = "start";
+const MOD_POSITION_MIDDLE = "middle";
+const MOD_POSITION_END = "end";
+const MOD_IMAGE_TYPE_DEFINITIONS = [
+  { key: "portrait", label: "Portrait", icon: "fa-user" },
+  { key: "fullbody", label: "Full body", icon: "fa-person" },
+  { key: "free", label: "Free", icon: "fa-pen-to-square" },
+  { key: "background", label: "Background", icon: "fa-mountain-sun" },
+  { key: "scene", label: "Scene", icon: "fa-people-group" },
+  { key: "viewpoint", label: "Viewpoint", icon: "fa-eye" },
+];
 
 function hasImageGenerationExtension() {
   return Boolean(findExtension("stable-diffusion")?.enabled);
@@ -60,6 +80,133 @@ function shouldAddPromptGuide() {
 
 function shouldUseCropToolForAvatars() {
   return extension_settings?.[extensionName]?.use_crop_tool_for_avatars === true;
+}
+
+function shouldShowModsPanel() {
+  return extension_settings?.[extensionName]?.show_mods_panel === true;
+}
+
+function createDefaultModImageTypes() {
+  return {
+    portrait: true,
+    fullbody: true,
+    free: true,
+    background: true,
+    scene: true,
+    viewpoint: true,
+  };
+}
+
+function normalizeModPosition(value) {
+  if (value === MOD_POSITION_START || value === MOD_POSITION_END) {
+    return value;
+  }
+
+  return MOD_POSITION_MIDDLE;
+}
+
+function normalizeModImageTypes(value) {
+  const normalized = createDefaultModImageTypes();
+  if (!value || typeof value !== "object") {
+    return normalized;
+  }
+
+  for (const definition of MOD_IMAGE_TYPE_DEFINITIONS) {
+    if (Object.prototype.hasOwnProperty.call(value, definition.key)) {
+      normalized[definition.key] = value[definition.key] !== false;
+    }
+  }
+
+  return normalized;
+}
+
+function compactWhitespace(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deriveModShortname(shortnameValue, fullContentValue) {
+  const shortname = compactWhitespace(shortnameValue).slice(0, MOD_SHORTNAME_MAX_LENGTH);
+  if (shortname) {
+    return shortname;
+  }
+
+  const fromContent = compactWhitespace(fullContentValue).slice(0, MOD_SHORTNAME_MAX_LENGTH);
+  if (fromContent) {
+    return fromContent;
+  }
+
+  return "New mod";
+}
+
+function createModId() {
+  return `mod_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeModEntry(mod) {
+  const fullContent = String(mod?.fullContent || "").replace(/\r\n?/g, "\n").trim();
+  return {
+    id: String(mod?.id || "").trim() || createModId(),
+    enabled: mod?.enabled !== false,
+    position: normalizeModPosition(mod?.position),
+    shortname: deriveModShortname(mod?.shortname, fullContent),
+    fullContent,
+    imageTypes: normalizeModImageTypes(mod?.imageTypes),
+  };
+}
+
+function getModsSettingsRaw() {
+  extension_settings[extensionName] = extension_settings[extensionName] || {};
+  if (!Array.isArray(extension_settings[extensionName].mods)) {
+    extension_settings[extensionName].mods = [];
+  }
+
+  return extension_settings[extensionName].mods;
+}
+
+function getModsSettings() {
+  return getModsSettingsRaw().map((mod) => normalizeModEntry(mod));
+}
+
+function saveModsSettings(nextMods, options = {}) {
+  const rerender = options.rerender !== false;
+  extension_settings[extensionName] = extension_settings[extensionName] || {};
+  extension_settings[extensionName].mods = (Array.isArray(nextMods) ? nextMods : []).map((mod) => normalizeModEntry(mod));
+  saveSettingsDebounced();
+
+  if (rerender) {
+    renderModsPanel();
+  }
+}
+
+function getModImageTypeForGenerationMode(mode) {
+  if (mode === "viewer-eyes") {
+    return "viewpoint";
+  }
+
+  if (mode === "portrait" || mode === "fullbody" || mode === "free" || mode === "background" || mode === "scene") {
+    return mode;
+  }
+
+  return null;
+}
+
+function buildModsPromptForPosition(position, imageType) {
+  if (!imageType) {
+    return "";
+  }
+
+  const mods = getModsSettings();
+  const matchingMods = mods
+    .filter((mod) => mod.enabled)
+    .filter((mod) => mod.position === position)
+    .filter((mod) => mod.imageTypes?.[imageType] !== false)
+    .map((mod) => String(mod.fullContent || "").trim() || String(mod.shortname || "").trim())
+    .filter(Boolean);
+
+  return matchingMods.join("\n\n");
 }
 
 function shouldAutoAddPersonaCharacter() {
@@ -238,6 +385,53 @@ function initializeMobileDrawer() {
 
   mobileDrawerOpen = !isMobileDrawerMode();
   renderMobileDrawerState();
+}
+
+function renderLeftDrawerState() {
+  if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
+    return;
+  }
+
+  const mobileMode = isMobileDrawerMode();
+  modsPanelContainerRoot.toggleClass("is-mobile-collapsed", mobileMode && !mobileDrawerLeftOpen);
+  modsPanelContainerRoot.toggleClass("is-desktop-collapsed", !mobileMode && !mobileDrawerLeftOpen);
+
+  mobileDrawerLeftToggleButton.toggleClass("is-open", mobileDrawerLeftOpen);
+
+  const icon = mobileDrawerLeftToggleButton.find("i");
+  icon.removeClass("fa-angle-left fa-angle-right").addClass(mobileDrawerLeftOpen ? "fa-angle-left" : "fa-angle-right");
+
+  mobileDrawerLeftToggleButton.attr("title", mobileDrawerLeftOpen ? "Hide mods panel" : "Show mods panel");
+}
+
+function initializeLeftMobileDrawer() {
+  if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
+    return;
+  }
+
+  if (!mobileDrawerLeftBindingsInitialized) {
+    mobileDrawerLeftBindingsInitialized = true;
+
+    mobileDrawerLeftToggleButton.on("click", () => {
+      mobileDrawerLeftOpen = !mobileDrawerLeftOpen;
+      renderLeftDrawerState();
+    });
+
+    const onViewportChange = () => {
+      renderLeftDrawerState();
+    };
+
+    const mediaQueryList = window.matchMedia(MOBILE_DRAWER_MEDIA_QUERY);
+    if (typeof mediaQueryList.addEventListener === "function") {
+      mediaQueryList.addEventListener("change", onViewportChange);
+    } else if (typeof mediaQueryList.addListener === "function") {
+      mediaQueryList.addListener(onViewportChange);
+    }
+  }
+
+  // Mods drawer defaults to collapsed on both desktop and mobile.
+  mobileDrawerLeftOpen = false;
+  renderLeftDrawerState();
 }
 
 async function maybeCropAvatarDataUrl(dataUrl) {
@@ -594,7 +788,12 @@ async function generateCharacterImage(mode, triggerButton = null) {
       promptToast = null;
     }
 
-    let finalTrigger = [characterDescription, String(llmVisual || "").trim()]
+    const imageType = getModImageTypeForGenerationMode(mode);
+    const modsStart = buildModsPromptForPosition(MOD_POSITION_START, imageType);
+    const modsMiddle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType);
+    const modsEnd = buildModsPromptForPosition(MOD_POSITION_END, imageType);
+
+    let finalTrigger = [modsStart, characterDescription, modsMiddle, String(llmVisual || "").trim(), modsEnd]
       .filter(Boolean)
       .join("\n\n")
       .replace(/\r\n/g, "\n")
@@ -666,7 +865,11 @@ async function generateFreeImage() {
   const data = loadCharacterDetails(context);
   const presentAll = getPresentCharacters(data);
   const characterDescription = buildCharactersVisualDescriptions(data, presentAll);
-  let finalTrigger = [characterDescription]
+  const imageType = getModImageTypeForGenerationMode("free");
+  const modsStart = buildModsPromptForPosition(MOD_POSITION_START, imageType);
+  const modsMiddle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType);
+  const modsEnd = buildModsPromptForPosition(MOD_POSITION_END, imageType);
+  let finalTrigger = [modsStart, characterDescription, modsMiddle, modsEnd]
     .filter(Boolean)
     .join("\n\n")
     .replace(/\r\n/g, "\n")
@@ -2831,6 +3034,529 @@ async function handleImportCharacterDetails() {
   }
 }
 
+function renderModsPanelVisibility() {
+  if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
+    return;
+  }
+
+  const visible = shouldShowModsPanel();
+  modsPanelContainerRoot.toggleClass("is-hidden", !visible);
+  mobileDrawerLeftToggleButton.toggleClass("displayNone", !visible);
+
+  if (!visible) {
+    openModImageTypesForId = null;
+    return;
+  }
+
+  renderLeftDrawerState();
+  renderModsPanel();
+}
+
+function getEnabledModImageTypeCount(mod) {
+  return MOD_IMAGE_TYPE_DEFINITIONS
+    .filter((definition) => mod?.imageTypes?.[definition.key] !== false)
+    .length;
+}
+
+function getModImageTypesButtonTitle(mod) {
+  const enabledLabels = MOD_IMAGE_TYPE_DEFINITIONS
+    .filter((definition) => mod?.imageTypes?.[definition.key] !== false)
+    .map((definition) => definition.label);
+
+  if (enabledLabels.length === MOD_IMAGE_TYPE_DEFINITIONS.length) {
+    return "Active for all image types";
+  }
+
+  if (enabledLabels.length === 0) {
+    return "Active for no image types";
+  }
+
+  return `Active for: ${enabledLabels.join(", ")}`;
+}
+
+function renderModsPanel() {
+  if (!modsPanelRoot?.length) {
+    return;
+  }
+
+  if (!shouldShowModsPanel()) {
+    modsPanelRoot.empty();
+    return;
+  }
+
+  const mods = getModsSettings();
+  if (!mods.length) {
+    modsPanelRoot.html('<div class="character-mods-panel__empty">No mods yet. Use + to add one.</div>');
+    return;
+  }
+
+  const html = mods.map((mod) => {
+    const enabledTypesCount = getEnabledModImageTypeCount(mod);
+    const allTypesEnabled = enabledTypesCount === MOD_IMAGE_TYPE_DEFINITIONS.length;
+    const typesPopupOpen = openModImageTypesForId === mod.id;
+    const position = normalizeModPosition(mod.position);
+
+    const typeButtons = MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => {
+      const typeEnabled = mod.imageTypes?.[definition.key] !== false;
+      return `
+        <button
+          type="button"
+          class="mod-item__image-type ${typeEnabled ? "" : "is-disabled"}"
+          data-action="toggle-mod-image-type"
+          data-mod-id="${escapeHtml(mod.id)}"
+          data-image-type="${escapeHtml(definition.key)}"
+          title="${escapeHtml(definition.label)}"
+        >
+          <i class="fa-solid ${definition.icon}"></i>
+        </button>
+      `;
+    }).join("");
+
+    return `
+      <div class="mod-item" data-mod-id="${escapeHtml(mod.id)}">
+        <span class="mod-item__drag-handle" draggable="true" title="Drag to reorder">
+          <i class="fa-solid fa-grip-vertical"></i>
+        </span>
+        <button
+          type="button"
+          class="mod-item__led ${mod.enabled ? "is-enabled" : ""}"
+          data-action="toggle-mod-enabled"
+          data-mod-id="${escapeHtml(mod.id)}"
+          title="${mod.enabled ? "Disable mod" : "Enable mod"}"
+        >
+          <i class="fa-solid fa-circle"></i>
+        </button>
+        <div class="mod-item__types-wrap">
+          <button
+            type="button"
+            class="menu_button mod-item__image-types-button ${allTypesEnabled ? "" : "is-filtered"}"
+            data-action="toggle-mod-image-types"
+            data-mod-id="${escapeHtml(mod.id)}"
+            title="${escapeHtml(getModImageTypesButtonTitle(mod))}"
+          >
+            <i class="fa-solid fa-images"></i>
+          </button>
+          <div class="mod-item__image-types-popup ${typesPopupOpen ? "is-open" : ""}">
+            ${typeButtons}
+          </div>
+        </div>
+        <select class="text_pole mod-item__position" data-action="set-mod-position" data-mod-id="${escapeHtml(mod.id)}">
+          <option value="start" ${position === MOD_POSITION_START ? "selected" : ""}>Beginning</option>
+          <option value="middle" ${position === MOD_POSITION_MIDDLE ? "selected" : ""}>After chars</option>
+          <option value="end" ${position === MOD_POSITION_END ? "selected" : ""}>End</option>
+        </select>
+        <button
+          type="button"
+          class="mod-item__shortname"
+          data-action="edit-mod-shortname"
+          data-mod-id="${escapeHtml(mod.id)}"
+          title="Edit shortname"
+        >${escapeHtml(mod.shortname)}</button>
+        <button
+          type="button"
+          class="mod-item__action"
+          data-action="edit-mod-content"
+          data-mod-id="${escapeHtml(mod.id)}"
+          title="Edit full mod content"
+        >
+          <i class="fa-solid fa-pen-to-square"></i>
+        </button>
+        <button
+          type="button"
+          class="mod-item__action"
+          data-action="delete-mod"
+          data-mod-id="${escapeHtml(mod.id)}"
+          title="Delete mod"
+        >
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  modsPanelRoot.html(html);
+}
+
+function clearModDragIndicators() {
+  modsPanelRoot?.find(".mod-item").removeClass("drop-before drop-after");
+}
+
+function resolveModItemElement(event) {
+  const target = event?.target;
+  if (!target?.closest) {
+    return null;
+  }
+
+  return target.closest(".mod-item");
+}
+
+function getModById(modId) {
+  return getModsSettings().find((mod) => mod.id === modId) || null;
+}
+
+function closeModImageTypesPopup() {
+  if (!openModImageTypesForId) {
+    return;
+  }
+
+  openModImageTypesForId = null;
+  renderModsPanel();
+}
+
+async function handleAddMod() {
+  const value = await callGenericPopup(
+    "Add mod",
+    POPUP_TYPE.INPUT,
+    "",
+    { rows: 8, okButton: "Add", cancelButton: "Cancel" },
+  );
+
+  if (value === null || value === undefined || value === false) {
+    return;
+  }
+
+  const fullContent = String(value || "").replace(/\r\n?/g, "\n").trim();
+  const mods = getModsSettings();
+  mods.push({
+    id: createModId(),
+    enabled: true,
+    position: MOD_POSITION_MIDDLE,
+    shortname: deriveModShortname("", fullContent),
+    fullContent,
+    imageTypes: createDefaultModImageTypes(),
+  });
+  saveModsSettings(mods);
+}
+
+function handleModEnabledToggle(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  mods[index].enabled = !mods[index].enabled;
+  saveModsSettings(mods);
+}
+
+function handleModImageTypesMenuToggle(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  openModImageTypesForId = openModImageTypesForId === modId ? null : modId;
+  renderModsPanel();
+}
+
+function handleModImageTypeToggle(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  const imageType = String(actionOwner?.dataset?.imageType || "").trim();
+  if (!modId || !imageType) {
+    return;
+  }
+
+  if (!MOD_IMAGE_TYPE_DEFINITIONS.some((definition) => definition.key === imageType)) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  const nextImageTypes = normalizeModImageTypes(mods[index].imageTypes);
+  nextImageTypes[imageType] = !nextImageTypes[imageType];
+  mods[index].imageTypes = nextImageTypes;
+  openModImageTypesForId = modId;
+  saveModsSettings(mods);
+}
+
+function handleModPositionChange(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  mods[index].position = normalizeModPosition(actionOwner.value);
+  saveModsSettings(mods, { rerender: false });
+}
+
+async function handleModShortnameEdit(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const mod = getModById(modId);
+  if (!mod) {
+    return;
+  }
+
+  const value = await callGenericPopup(
+    "Edit mod shortname",
+    POPUP_TYPE.INPUT,
+    mod.shortname,
+    { rows: 1, okButton: "Save", cancelButton: "Cancel" },
+  );
+
+  if (value === null || value === undefined || value === false) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((item) => item.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  mods[index].shortname = deriveModShortname(value, mods[index].fullContent);
+  saveModsSettings(mods);
+}
+
+async function handleModContentEdit(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const mod = getModById(modId);
+  if (!mod) {
+    return;
+  }
+
+  const value = await callGenericPopup(
+    "Edit mod content",
+    POPUP_TYPE.INPUT,
+    String(mod.fullContent || "").trim() || String(mod.shortname || "").trim(),
+    { rows: 8, okButton: "Save", cancelButton: "Cancel" },
+  );
+
+  if (value === null || value === undefined || value === false) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((item) => item.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  mods[index].fullContent = String(value || "").replace(/\r\n?/g, "\n").trim();
+  if (!String(mods[index].shortname || "").trim()) {
+    mods[index].shortname = deriveModShortname("", mods[index].fullContent);
+  }
+  saveModsSettings(mods);
+}
+
+async function handleModDelete(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const confirmed = await Popup.show.confirm(
+    "Delete mod",
+    "Are you sure you want to delete this mod?",
+    { okButton: "Delete", cancelButton: "Cancel" },
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const mods = getModsSettings().filter((mod) => mod.id !== modId);
+  if (openModImageTypesForId === modId) {
+    openModImageTypesForId = null;
+  }
+  saveModsSettings(mods);
+}
+
+function handleModDragStart(event) {
+  const dragOrigin = event.target;
+  const dragHandle = dragOrigin?.closest?.(".mod-item__drag-handle");
+  const nativeEvent = event.originalEvent || event;
+
+  if (!dragHandle) {
+    if (nativeEvent.dataTransfer) {
+      nativeEvent.dataTransfer.effectAllowed = "none";
+    }
+    event.preventDefault();
+    return;
+  }
+
+  const modItemElement = dragHandle.closest(".mod-item");
+  const modId = String(modItemElement?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  draggedModId = modId;
+  if (nativeEvent.dataTransfer) {
+    nativeEvent.dataTransfer.setData("text/plain", modId);
+    nativeEvent.dataTransfer.effectAllowed = "move";
+  }
+
+  modItemElement.classList.add("is-dragging");
+}
+
+function handleModDragOver(event) {
+  if (!draggedModId) {
+    return;
+  }
+
+  const modItemElement = resolveModItemElement(event);
+  if (!modItemElement) {
+    return;
+  }
+
+  const targetModId = String(modItemElement.dataset.modId || "").trim();
+  if (!targetModId || targetModId === draggedModId) {
+    return;
+  }
+
+  event.preventDefault();
+  const nativeEvent = event.originalEvent || event;
+  const rect = modItemElement.getBoundingClientRect();
+  const offsetY = nativeEvent.clientY - rect.top;
+  const ratio = rect.height > 0 ? offsetY / rect.height : 0.5;
+
+  clearModDragIndicators();
+  if (ratio <= 0.5) {
+    modItemElement.classList.add("drop-before");
+  } else {
+    modItemElement.classList.add("drop-after");
+  }
+}
+
+function handleModDrop(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const modItemElement = resolveModItemElement(event);
+  if (!modItemElement) {
+    return;
+  }
+
+  const nativeEvent = event.originalEvent || event;
+  const draggedId = String(nativeEvent.dataTransfer?.getData("text/plain") || draggedModId || "").trim();
+  const targetId = String(modItemElement.dataset.modId || "").trim();
+  if (!draggedId || !targetId || draggedId === targetId) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const draggedIndex = mods.findIndex((mod) => mod.id === draggedId);
+  const targetIndex = mods.findIndex((mod) => mod.id === targetId);
+  if (draggedIndex === -1 || targetIndex === -1) {
+    return;
+  }
+
+  const dropAfter = modItemElement.classList.contains("drop-after");
+  const [draggedMod] = mods.splice(draggedIndex, 1);
+  let insertIndex = targetIndex;
+
+  if (draggedIndex < targetIndex) {
+    insertIndex -= 1;
+  }
+
+  if (dropAfter) {
+    insertIndex += 1;
+  }
+
+  insertIndex = Math.max(0, Math.min(mods.length, insertIndex));
+  mods.splice(insertIndex, 0, draggedMod);
+  openModImageTypesForId = null;
+  saveModsSettings(mods);
+}
+
+function handleModDragEnd(event) {
+  const modItemElement = resolveModItemElement(event);
+  if (modItemElement) {
+    modItemElement.classList.remove("is-dragging");
+  }
+
+  draggedModId = null;
+  clearModDragIndicators();
+}
+
+function handleModPanelClick(event) {
+  const actionOwner = event.target.closest("[data-action]");
+  if (!actionOwner) {
+    return;
+  }
+
+  const action = String(actionOwner.dataset.action || "").trim();
+  if (!action) {
+    return;
+  }
+
+  if (action === "toggle-mod-enabled") {
+    handleModEnabledToggle(actionOwner);
+    return;
+  }
+
+  if (action === "toggle-mod-image-types") {
+    handleModImageTypesMenuToggle(actionOwner);
+    return;
+  }
+
+  if (action === "toggle-mod-image-type") {
+    handleModImageTypeToggle(actionOwner);
+    return;
+  }
+
+  if (action === "edit-mod-shortname") {
+    void handleModShortnameEdit(actionOwner);
+    return;
+  }
+
+  if (action === "edit-mod-content") {
+    void handleModContentEdit(actionOwner);
+    return;
+  }
+
+  if (action === "delete-mod") {
+    void handleModDelete(actionOwner);
+  }
+}
+
+function handleModPanelChange(event) {
+  const actionOwner = event.target.closest("[data-action]");
+  if (!actionOwner) {
+    return;
+  }
+
+  const action = String(actionOwner.dataset.action || "").trim();
+  if (action === "set-mod-position") {
+    handleModPositionChange(actionOwner);
+  }
+}
+
+function handleModPanelOutsideClick(event) {
+  if (!openModImageTypesForId) {
+    return;
+  }
+
+  const target = event.target;
+  if (target?.closest?.(".mod-item__types-wrap")) {
+    return;
+  }
+
+  closeModImageTypesPopup();
+}
+
 function handlePanelInput(event) {
   const target = event.target;
   const field = target.dataset.field;
@@ -3370,6 +4096,15 @@ function bindEvents() {
   footerBackgroundButton.on("click", (event) => generateCharacterImage("background", $(event.currentTarget)));
   footerViewerEyesButton.on("click", (event) => generateCharacterImage("viewer-eyes", $(event.currentTarget)));
   footerSceneButton.on("click", (event) => generateCharacterImage("scene", $(event.currentTarget)));
+  modsAddButton.on("click", () => {
+    void handleAddMod();
+  });
+  modsPanelRoot.on("click", handleModPanelClick);
+  modsPanelRoot.on("change", handleModPanelChange);
+  modsPanelRoot.on("dragstart", handleModDragStart);
+  modsPanelRoot.on("dragover", handleModDragOver);
+  modsPanelRoot.on("drop", handleModDrop);
+  modsPanelRoot.on("dragend", handleModDragEnd);
   panelRoot.on("input", handlePanelInput);
   panelRoot.on("click", handlePanelClick);
   floatingRoot.on("click", handlePanelClick);
@@ -3389,15 +4124,23 @@ function bindEvents() {
   });
   $(document).on("click", "[data-action='set-as-avatar']", handleSetAsAvatarClick);
   $(document).on("click", "[data-action='set-as-chat-background']", handleSetAsChatBackgroundClick);
+  $(document).off("click.stExtensionModsPanel").on("click.stExtensionModsPanel", handleModPanelOutsideClick);
+  $(document)
+    .off("st-extension-example:mods-panel-visibility-changed")
+    .on("st-extension-example:mods-panel-visibility-changed", renderModsPanelVisibility);
 }
 
 function initCharacterDetailsPanel() {
   const context = getContext();
   panelContainerRoot = $("#st-extension-right-panel");
+  modsPanelContainerRoot = $("#st-extension-left-panel");
   panelRoot = $("#character-details-panel");
   floatingRoot = $("#character-details-floating");
   managerRoot = $("#character-details-manager");
   mobileDrawerToggleButton = $("#st-extension-mobile-drawer-toggle");
+  mobileDrawerLeftToggleButton = $("#st-extension-mobile-drawer-left-toggle");
+  modsPanelRoot = $("#character-details-mods-panel");
+  modsAddButton = $("#character-details-mods-add");
   footerGenerateButton = $("#character-details-generate");
   footerFreeGenerateButton = $("#character-details-free-generate");
   footerPortraitButton = $("#character-details-portrait");
@@ -3416,6 +4159,8 @@ function initCharacterDetailsPanel() {
   const reloadState = () => {
     const nextContext = getContext();
     state = loadCharacterDetails(nextContext);
+    extension_settings[extensionName] = extension_settings[extensionName] || {};
+    extension_settings[extensionName].mods = getModsSettings();
     ensureActiveCharacter(state);
     ensureActiveGroups(state);
     applyViewerFromPersona(state, nextContext);
@@ -3426,6 +4171,7 @@ function initCharacterDetailsPanel() {
     renderPreviewToggleState();
     renderGuideToggleState();
     updateFooterImageButtonsVisibility();
+    renderModsPanelVisibility();
     renderPanel();
     
     // Reset processed messages to re-inject buttons after chat change
@@ -3445,6 +4191,7 @@ function initCharacterDetailsPanel() {
 
   bindEvents();
   initializeMobileDrawer();
+  initializeLeftMobileDrawer();
   reloadState();
 
   if (!customFieldRefreshTimer) {

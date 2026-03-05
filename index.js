@@ -49,6 +49,7 @@ function normalizeLlmHistoryMessageLimit(value) {
 const defaultSettings = {
   descriptions_prompt: DEFAULT_DESCRIPTIONS_PROMPT,
   custom_fields: [],
+  mods: [],
   auto_add_persona_character_for_new_chat: true,
   switcher_character_limit: 7,
   llm_history_message_limit: 5,
@@ -56,6 +57,7 @@ const defaultSettings = {
   llm_clothing_json_interpretation_prompt: DEFAULT_JSON_INTERPRETATION_PROMPT,
   llm_clothing_plain_text_interpretation_prompt: DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT,
   show_image_generation_buttons: true,
+  show_mods_panel: false,
   use_crop_tool_for_avatars: false,
   preview_image_prompts: false,
   add_prompt_guide: false,
@@ -101,6 +103,10 @@ async function loadSettings() {
     extension_settings[extensionName].custom_resolutions = { ...defaultSettings.custom_resolutions };
   }
 
+  if (!Array.isArray(extension_settings[extensionName].mods)) {
+    extension_settings[extensionName].mods = [];
+  }
+
   for (const { key } of resolutionSelectMappings) {
     const value = String(extension_settings[extensionName].custom_resolutions[key] || DEFAULT_RESOLUTION_OPTION);
     extension_settings[extensionName].custom_resolutions[key] = value in IMAGE_RESOLUTION_OPTIONS ? value : DEFAULT_RESOLUTION_OPTION;
@@ -118,6 +124,7 @@ async function loadSettings() {
   $("#llm_clothing_plain_text").prop("checked", extension_settings[extensionName].llm_clothing_plain_text === true);
   renderClothingInterpretationPromptField();
   $("#show_image_generation_buttons").prop("checked", extension_settings[extensionName].show_image_generation_buttons !== false);
+  $("#show_mods_panel").prop("checked", extension_settings[extensionName].show_mods_panel === true);
   $("#use_crop_tool_for_avatars").prop("checked", extension_settings[extensionName].use_crop_tool_for_avatars === true);
   $("#visual_command_start").val(extension_settings[extensionName].visual_command_start || defaultSettings.visual_command_start);
   $("#closeup_portrait_prompt").val(extension_settings[extensionName].closeup_portrait_prompt || defaultSettings.closeup_portrait_prompt);
@@ -245,8 +252,20 @@ function renderCustomFieldsSettings() {
 function appendRightPanel(panelHtml) {
   const $panel = $(panelHtml);
   const $existing = $("#st-extension-right-panel");
+  const $existingLeft = $("#st-extension-left-panel");
+  const $existingToggle = $("#st-extension-mobile-drawer-toggle");
+  const $existingLeftToggle = $("#st-extension-mobile-drawer-left-toggle");
   if ($existing.length > 0) {
     $existing.remove();
+  }
+  if ($existingLeft.length > 0) {
+    $existingLeft.remove();
+  }
+  if ($existingToggle.length > 0) {
+    $existingToggle.remove();
+  }
+  if ($existingLeftToggle.length > 0) {
+    $existingLeftToggle.remove();
   }
 
   $("body").append($panel);
@@ -336,6 +355,12 @@ jQuery(async () => {
 
   $("#show_image_generation_buttons").on("change", (event) => {
     extension_settings[extensionName].show_image_generation_buttons = Boolean($(event.target).prop("checked"));
+    saveSettingsDebounced();
+  });
+
+  $("#show_mods_panel").on("change", (event) => {
+    extension_settings[extensionName].show_mods_panel = Boolean($(event.target).prop("checked"));
+    $(document).trigger("st-extension-example:mods-panel-visibility-changed");
     saveSettingsDebounced();
   });
 
