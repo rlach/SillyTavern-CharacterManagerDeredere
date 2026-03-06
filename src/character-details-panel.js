@@ -198,12 +198,22 @@ function buildModsPromptForPosition(position, imageType) {
     return "";
   }
 
+  const ensureTrailingComma = (value) => {
+    const text = String(value || "").trim();
+    if (!text) {
+      return "";
+    }
+
+    return /,\s*$/.test(text) ? text : `${text},`;
+  };
+
   const mods = getModsSettings();
   const matchingMods = mods
     .filter((mod) => mod.enabled)
     .filter((mod) => mod.position === position)
     .filter((mod) => mod.imageTypes?.[imageType] !== false)
     .map((mod) => String(mod.fullContent || "").trim() || String(mod.shortname || "").trim())
+    .map((modText) => ensureTrailingComma(modText))
     .filter(Boolean);
 
   return matchingMods.join("\n\n");
@@ -1921,6 +1931,24 @@ function renderPanel() {
   renderManagerPanel();
 }
 
+function hasActiveChatSession(context) {
+  return Boolean(context?.getCurrentChatId?.());
+}
+
+function persistDescriptionsForCurrentChat(context, data) {
+  if (!hasActiveChatSession(context)) {
+    return;
+  }
+
+  const descriptionsText = buildDescriptionsText(data);
+  context.variables?.local?.set?.("descriptions", descriptionsText);
+
+  if (data?.lastGenDescriptionsTarget) {
+    const genDescriptions = buildGenDescriptions(data, data.lastGenDescriptionsTarget);
+    context.variables?.local?.set?.("genDescriptions", genDescriptions);
+  }
+}
+
 function saveAndRender() {
   const context = getContext();
   state = normalizeCharacterDetails(state, context);
@@ -1931,14 +1959,7 @@ function saveAndRender() {
   
   ensureActiveGroups(state);
   saveCharacterDetails(context, state);
-  const descriptionsText = buildDescriptionsText(state);
-  context.variables?.local?.set?.("descriptions", descriptionsText);
-  
-  // If a target was previously set, also update genDescriptions
-  if (state.lastGenDescriptionsTarget) {
-    const genDescriptions = buildGenDescriptions(state, state.lastGenDescriptionsTarget);
-    context.variables?.local?.set?.("genDescriptions", genDescriptions);
-  }
+  persistDescriptionsForCurrentChat(context, state);
   
   renderPanel();
 }
@@ -1953,14 +1974,7 @@ function updateDescriptionsOnly() {
   
   ensureActiveGroups(state);
   saveCharacterDetails(context, state);
-  const descriptionsText = buildDescriptionsText(state);
-  context.variables?.local?.set?.("descriptions", descriptionsText);
-  
-  // If a target was previously set, also update genDescriptions
-  if (state.lastGenDescriptionsTarget) {
-    const genDescriptions = buildGenDescriptions(state, state.lastGenDescriptionsTarget);
-    context.variables?.local?.set?.("genDescriptions", genDescriptions);
-  }
+  persistDescriptionsForCurrentChat(context, state);
 }
 
 function handleAddCharacter() {
@@ -4166,8 +4180,7 @@ function initCharacterDetailsPanel() {
     applyViewerFromPersona(state, nextContext);
     applyMainCharacterFromChat(state, nextContext);
     saveCharacterDetails(nextContext, state);
-    const descriptionsText = buildDescriptionsText(state);
-    nextContext.variables?.local?.set?.("descriptions", descriptionsText);
+    persistDescriptionsForCurrentChat(nextContext, state);
     renderPreviewToggleState();
     renderGuideToggleState();
     updateFooterImageButtonsVisibility();
@@ -4238,8 +4251,7 @@ function setCharacterDetailsData(data) {
   ensureActiveCharacter(state);
   ensureActiveGroups(state);
   saveCharacterDetails(context, state);
-  const descriptionsText = buildDescriptionsText(state);
-  context.variables?.local?.set?.("descriptions", descriptionsText);
+  persistDescriptionsForCurrentChat(context, state);
   renderPanel();
 }
 
