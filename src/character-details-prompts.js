@@ -1,9 +1,11 @@
-const COMPACT_CHANGELOG_SHAPE = "{\"newChars\":[\"(ex1)Example Character One\"],\"rename\":[\"(ex2)Example Character Two Renamed\"],\"present\":[\"ex1\",\"ex2\",\"ex3\"],\"newDescs\":{\"ex1\":\"Example appearance description.\"},\"updatedDescs\":{\"ex2\":\"Updated example appearance description.\"},\"newOutfits\":[\"(ex1)[ex4]Example Outfit\"],\"renameOutfits\":[\"[ex5]Example Outfit Renamed\"],\"newLayers\":{\"ex4\":[\"Example Top[Example Inner Layer]\",\"Example Bottom\",\"Example Shoes\"]},\"renameLayers\":{},\"visChanges\":{\"on\":[\"ex4/Example Top\"],\"part\":[\"ex4/Example Top/Example Inner Layer\"],\"off\":[\"ex4/Example Shoes\"],\"peek\":[\"ex4/Example Top/Example Inner Layer\"]}}";
+const COMPACT_CHANGELOG_SHAPE = "{\"newChars\":[\"(ex1)Example Character One\"],\"rename\":[\"(ex2)Example Character Two Renamed\"],\"present\":[\"ex1\",\"ex2\",\"ex3\"],\"newDescs\":{\"ex1\":\"Example appearance description.\"},\"updatedDescs\":{\"ex2\":\"Updated example appearance description.\"},\"newOutfits\":[\"(ex1)[ex4]Example Outfit\"],\"renameOutfits\":[\"[ex5]Example Outfit Renamed\"],\"newLayers\":{\"ex4\":[\"Example Top[Example Inner Layer]\",\"Example Bottom\",\"Example Shoes\"]},\"renameLayers\":{\"ex4/Example Top\":\"Example Blouse\",\"ex4/Example Top/Example Inner Layer\":\"Example Bra\"},\"visChanges\":{\"on\":[\"ex4/Example Top\"],\"part\":[\"ex4/Example Top/Example Inner Layer\"],\"off\":[\"ex4/Example Shoes\"],\"peek\":[\"ex4/Example Top/Example Inner Layer\"]}}";
 
 const COMPACT_OUTFIT_ONLY_CHANGELOG_SHAPE = "{\"newOutfits\":[\"(ex1)[ex4]Example Outfit\"],\"newLayers\":{\"ex4\":[\"Example Top[Example Inner Layer]\",\"Example Bottom\",\"Example Shoes\"]}}";
 
 const DEFAULT_DESCRIPTIONS_PROMPT = [
   "Ignore previous instructions and provide ONLY a minimal CHANGELOG JSON for character details. Return only JSON.",
+  "",
+  "Your task is to look at current CHARMANDER clothing status, and compare it to recent story. Create changelog JSON according to the rules bellow, so CHARMANDER clothing status can be updated to match current story status. Include new characters, clothing state changes etc. New character is someone that doesn't appear in CHARMANDER clothing status yet. You can add multiple characters and outfits in one go.",
   "",
   "Return exactly one SINGLE-LINE JSON object with this shape:",
   COMPACT_CHANGELOG_SHAPE,
@@ -11,7 +13,7 @@ const DEFAULT_DESCRIPTIONS_PROMPT = [
   "Rules:",
   "- Only JSON, no markdown or extra text.",
   "- This is CHANGELOG mode. Output only additions and real changes.",
-  "- Never output full character state.",
+  "- Never output full character state, unless creating new character.",
   "- Character IDs and outfit IDs are immutable 3-character IDs.",
   "- newChars entries: \"(charId)Full Name\".",
   "- all characters represented by {{char}} must be included in changelog!",
@@ -21,10 +23,16 @@ const DEFAULT_DESCRIPTIONS_PROMPT = [
   "- field present is mandatory and HAS to be included in every response",
   "- newDescs adds description only for characters without description.",
   "- updatedDescs changes existing descriptions only when story/canon changed (not grammar/style).",
+  "- descriptions can only contain physical characteristics of character that can't be hidden under clothers, like hair, eyes, facial features, height, body type, age, breast size. Describe facial features and haircut in detail. Do not mention anything that wouldn't be visible under typical clothing(that includes any hidden tattoos, details of genitalia, and so on). Description can't contain facial expression because it changes constantly, nor personality traits.",
+  "- when describing size and weight convert numbers to appropriate words describing it. So \"short woman\" instead \"4.2 ft woman\". \"Fat man\" instead \"200 lbs man\". Use standards for given gender, race and age. In addition to describing age classify people as baby/child/teen/adult. Use japanese words loli/shota/futa when appropriate.",
+  "- even if source material uses flowery comparisons like \"as tall as a tree\" or \"as strong as an ox\", convert them to appropriate descriptive words. Artist will paint tree/ox/watermelon or other item you mention.",
   "- newOutfits entries: \"(ownerCharId)[outfitId]Outfit Name\".",
   "- renameOutfits entries: \"[existingOutfitId]New Outfit Name\".",
   "- newLayers is keyed by outfitId and uses path syntax: Parent[Child|Sibling].",
+  "- Never request deletion/removal of characters, outfits, or layers.",
+  "- Never move a layer between parents or outfits; if needed, rename using renameLayers with full existing path only.",
   "- [] defines child nesting; | separates siblings on same level.",
+  "- Layer system explanation: Outfit is composed of layers. Each outfit is complete set of clothes, accessories and any special elements. Characters will switch between outfits fully - it's impossible to mix outfits. Top layer should describe things that are visible when all pieces of the outfit are worn. For example if character wears socks and shoes and socks are visible they should both be on top layer. Things nested under first layer are typically not visible and are fully covered, that would include shirt under sweater, or underwear under pants. Thins on second layer are completely or near-completely covered by first layer(shirt slightly sticking out would still qualify it as second layer). Third layer are elements that are covered fully when 1st layer is taken off and only 2nd layer is visible. This will often include details on genitalia and/or breasts (under underwear layers). Typical depth of layers is 3, but some costumes (like swimsuits) might have less, and some might have more.",
   "- New layers are ON by default. Do not repeat them in visChanges.on.",
   "- visChanges has only changed paths: on, part, off, peek.",
   "- visChanges path syntax: \"outfitId/Layer/SubLayer\".",
@@ -35,9 +43,12 @@ const DEFAULT_DESCRIPTIONS_PROMPT = [
   "- visChanges.peek = force a covered child to remain visible through opening/cutout/transparent material.",
   "- Use peek only when a covered detail should still be visible; otherwise keep default hidden-under-parent behavior.",
   "- Peek can be used to reveal specific details without changing the overall coverage state.",
-  "- Example: if navel piercing should be visible under closed shirt, use peek for that child path.",
   "- If unsure about visChanges, omit it and keep default layer visibility logic.",
   "- renameLayers (if used) should rename only with new canonical information.",
+  "- renameLayers format: object map where key is full existing path and value is only new layer name.",
+  "- renameLayers key syntax: \"outfitId/Layer/SubLayer/...\" (full path from root, using current existing names).",
+  "- renameLayers value syntax: \"New Layer Name\" (name only, no path, no brackets).",
+  "- Example renameLayers entry: \"ex4/Example Top/Example Inner Layer\": \"Lace Bra\".",
   "- Process from top to bottom; references below must use latest names after rename.",
   "- Invalid operations should be skipped rather than inventing data.",
   "- Characters named in dialogue must be included (existing or created).",

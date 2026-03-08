@@ -206,6 +206,74 @@ function getCustomFieldsSettings() {
   return fields.map(normalizeCustomField);
 }
 
+function getCharacterNameById(data, characterId) {
+  if (!characterId || !Array.isArray(data?.characters)) {
+    return "";
+  }
+
+  const match = data.characters.find((character) => character?.id === characterId);
+  return String(match?.name || "").trim();
+}
+
+function getSelectedCharacterName(data) {
+  if (!data?.activeCharacterId || !Array.isArray(data?.characters)) {
+    return "";
+  }
+
+  const match = data.characters.find((character) => character?.id === data.activeCharacterId);
+  return String(match?.name || "").trim();
+}
+
+function resolveGlobalCharacterDetailsMacroValue(macroName) {
+  const context = getContext();
+  const data = loadCharacterDetails(context);
+
+  if (macroName === "viewer") {
+    return getCharacterNameById(data, data?.viewerCharacterId);
+  }
+
+  if (macroName === "mc") {
+    return getCharacterNameById(data, data?.mainCharacterId);
+  }
+
+  if (macroName === "selected") {
+    return getSelectedCharacterName(data);
+  }
+
+  return "";
+}
+
+function registerCharacterDetailsGlobalMacros() {
+  const context = getContext();
+  if (typeof context?.registerMacro !== "function") {
+    console.warn("CHARacter MANager: Macro registration API is not available");
+    return;
+  }
+
+  const macroDefinitions = [
+    {
+      key: "viewer",
+      description: "Name of the character marked as Viewer in CHARacter MANager.",
+    },
+    {
+      key: "mc",
+      description: "Name of the character marked as MC in CHARacter MANager.",
+    },
+    {
+      key: "selected",
+      description: "Name of the currently selected character in CHARacter MANager.",
+    },
+  ];
+
+  for (const definition of macroDefinitions) {
+    context.registerMacro(
+      definition.key,
+      () => resolveGlobalCharacterDetailsMacroValue(definition.key),
+      definition.description,
+    );
+  }
+}
+
 function readCustomFieldsFromDom() {
   const fields = [];
   $("#custom-fields-list .custom-field-row").each((index, row) => {
@@ -516,6 +584,7 @@ jQuery(async () => {
 
   // Register slash commands
   registerSlashCommands();
+  registerCharacterDetailsGlobalMacros();
 
   initCharacterDetailsPanel();
   initCharacterDetailsPromptInjector();

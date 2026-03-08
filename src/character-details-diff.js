@@ -129,7 +129,7 @@ function findGroupByLayersSignature(groups, signature) {
   return null;
 }
 
-function diffLayers(currentLayers, proposedLayers, path) {
+function diffLayers(currentLayers, proposedLayers, path, options = {}) {
   const items = [];
   const currentMap = mapByName(currentLayers);
   const proposedMap = mapByName(proposedLayers);
@@ -181,7 +181,7 @@ function diffLayers(currentLayers, proposedLayers, path) {
         const childItems = diffLayers(matchByStructure.children || [], proposed.children || [], {
           ...path,
           layer: newLayerPath,
-        });
+        }, options);
         items.push(...childItems);
       } else {
         // No match at all - this is truly a new layer
@@ -209,7 +209,7 @@ function diffLayers(currentLayers, proposedLayers, path) {
       const childItems = diffLayers(current.children || [], proposed.children || [], {
         ...path,
         layer: currentLayerPath,
-      });
+      }, options);
       items.push(...childItems);
       continue;
     }
@@ -230,11 +230,15 @@ function diffLayers(currentLayers, proposedLayers, path) {
     const childItems = diffLayers(current.children || [], proposed.children || [], {
       ...path,
       layer: currentLayerPath,
-    });
+    }, options);
     items.push(...childItems);
   }
 
   for (const [key, current] of currentMap) {
+    if (options.ignoreLayerRemovals === true) {
+      continue;
+    }
+
     if (!proposedMap.has(key) && !matchedCurrent.has(key)) {
       // Don't allow removal if layer is locked or has locked children
       if (current.locked || hasLockedChild(current.children || [])) {
@@ -326,7 +330,7 @@ function diffGroups(currentGroups, proposedGroups, path, options = {}) {
           ...diffLayers(matchByStructure.layers || [], proposed.layers || [], {
             ...path,
             group: proposed.name,
-          })
+          }, options)
         );
       } else {
         const addGroupItem =
@@ -362,7 +366,7 @@ function diffGroups(currentGroups, proposedGroups, path, options = {}) {
         ...diffLayers(current.layers || [], proposed.layers || [], {
           ...path,
           group: current.name,
-        })
+        }, options)
       );
       continue;
     }
@@ -371,7 +375,7 @@ function diffGroups(currentGroups, proposedGroups, path, options = {}) {
       ...diffLayers(current.layers || [], proposed.layers || [], {
         ...path,
         group: current.name,
-      })
+      }, options)
     );
   }
 
@@ -521,6 +525,72 @@ function diffCharacterAvatars(currentValues, proposedValues, currentCharacters, 
   return items;
 }
 
+function buildItemPathSignature(path) {
+  if (!path || typeof path !== "object") {
+    return "";
+  }
+
+  return [
+    normalizeName(path.character || ""),
+    normalizeName(path.group || ""),
+    normalizeName(path.layer || ""),
+    normalizeName(path.field || ""),
+    normalizeName(path.customField || ""),
+  ].join("::");
+}
+
+function stringifyForSignature(value) {
+  if (value === undefined) {
+    return "undefined";
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function buildItemSignature(item) {
+  if (!item || typeof item !== "object") {
+    return "";
+  }
+
+  const pathSignature = buildItemPathSignature(item.path);
+  return [
+    item.type || "",
+    item.action || "",
+    pathSignature,
+    stringifyForSignature(item.before),
+    stringifyForSignature(item.after),
+    stringifyForSignature(item.payload),
+  ].join("||");
+}
+
+function removeNoopAndDuplicateItems(items) {
+  const seenSignatures = new Set();
+  const result = [];
+
+  for (const item of Array.isArray(items) ? items : []) {
+    if (item?.action === "change" && valuesEqual(item.before, item.after)) {
+      continue;
+    }
+
+    const signature = buildItemSignature(item);
+    if (signature && seenSignatures.has(signature)) {
+      continue;
+    }
+
+    if (signature) {
+      seenSignatures.add(signature);
+    }
+
+    result.push(item);
+  }
+
+  return result;
+}
+
 function buildDiff(current, proposed, options = {}) {
   diffId = 0;
   const items = [];
@@ -598,7 +668,7 @@ function buildDiff(current, proposed, options = {}) {
   items.push(...diffCustomFieldValues(current.customFieldValues, proposed.customFieldValues));
   items.push(...diffCharacterAvatars(current.avatars, proposed.avatars, current.characters, proposed.characters));
 
-  return { items: reconcileRedundantLayerAddRemove(items) };
+  return { items: removeNoopAndDuplicateItems(reconcileRedundantLayerAddRemove(items)) };
 }
 
 function buildLayerSignature(layer) {
@@ -625,42 +695,56 @@ function buildLayerContextKey(item) {
 }
 
 function reconcileRedundantLayerAddRemove(items) {
-  const addBuckets = new Map();
-  const removeBuckets = new Map();
-
-  for (const item of items) {
-    if (item.type !== "layer") {
-      continue;
-    }
-
-    if (item.action === "add") {
-      const signature = buildLayerSignature(item.payload);
-      const key = `${buildLayerContextKey(item)}::${signature}`;
-      if (!addBuckets.has(key)) {
-        addBuckets.set(key, []);
-      }
-      addBuckets.get(key).push(item.id);
-    }
-
-    if (item.action === "remove") {
-      const signature = buildLayerSignature(item.before);
-      const key = `${buildLayerContextKey(item)}::${signature}`;
-      if (!removeBuckets.has(key)) {
-        removeBuckets.set(key, []);
-      }
-      removeBuckets.get(key).push(item.id);
-    }
-  }
-
   const toDrop = new Set();
-  for (const [key, addIds] of addBuckets) {
-    const removeIds = removeBuckets.get(key) || [];
-    const count = Math.min(addIds.length, removeIds.length);
-    for (let index = 0; index < count; index += 1) {
-      toDrop.add(addIds[index]);
-      toDrop.add(removeIds[index]);
+
+  const runPass = (contextResolver) => {
+    const addBuckets = new Map();
+    const removeBuckets = new Map();
+
+    for (const item of items) {
+      if (item.type !== "layer" || toDrop.has(item.id)) {
+        continue;
+      }
+
+      const signature = item.action === "add"
+        ? buildLayerSignature(item.payload)
+        : item.action === "remove"
+          ? buildLayerSignature(item.before)
+          : "";
+      if (!signature) {
+        continue;
+      }
+
+      const key = `${contextResolver(item)}::${signature}`;
+      if (item.action === "add") {
+        if (!addBuckets.has(key)) {
+          addBuckets.set(key, []);
+        }
+        addBuckets.get(key).push(item.id);
+      }
+
+      if (item.action === "remove") {
+        if (!removeBuckets.has(key)) {
+          removeBuckets.set(key, []);
+        }
+        removeBuckets.get(key).push(item.id);
+      }
     }
-  }
+
+    for (const [key, addIds] of addBuckets) {
+      const removeIds = removeBuckets.get(key) || [];
+      const count = Math.min(addIds.length, removeIds.length);
+      for (let index = 0; index < count; index += 1) {
+        toDrop.add(addIds[index]);
+        toDrop.add(removeIds[index]);
+      }
+    }
+  };
+
+  // Pass 1: strict match (same character/group/parent-layer)
+  runPass((item) => buildLayerContextKey(item));
+  // Pass 2: relaxed match (same character/group), to ignore LLM noise remove+add of identical layer
+  runPass((item) => `${normalizeName(item.path?.character || "")}::${normalizeName(item.path?.group || "")}`);
 
   if (toDrop.size === 0) {
     return items;

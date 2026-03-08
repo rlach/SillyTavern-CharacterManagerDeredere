@@ -10,7 +10,7 @@ import {
   normalizeCharacterDetails,
 } from "./character-details-store.js";
 import { buildDescriptionsText, buildGenDescriptions, buildCharacterVisualDescription } from "./character-details-descriptions.js";
-import { runDescriptionsGeneration, runOutfitGenerationForCharacter } from "./character-details-generation.js";
+import { runDescriptionsGeneration, runOutfitGenerationForCharacter, runCharacterGenerationWithAI } from "./character-details-generation.js";
 import { IMAGE_RESOLUTION_OPTIONS, DEFAULT_RESOLUTION_OPTION } from "./image-resolution-options.js";
 import { showCharacterDetailsDiff } from "./character-details-diff-modal.js";
 
@@ -34,10 +34,14 @@ let mobileDrawerToggleButton = null;
 let mobileDrawerLeftToggleButton = null;
 let modsPanelRoot = null;
 let modsAddButton = null;
+let modsPositionFilterRoot = null;
 let customFieldRefreshTimer = null;
 let draggedLayerId = null;
 let draggedModId = null;
 let openModImageTypesForId = null;
+let openModPositionForId = null;
+let openModGroupForId = null;
+let modsPanelPositionFilter = "all";
 let managerExpanded = false;
 let mobileDrawerOpen = false;
 let mobileDrawerLeftOpen = false;
@@ -53,6 +57,14 @@ const MOD_SHORTNAME_MAX_LENGTH = 50;
 const MOD_POSITION_START = "start";
 const MOD_POSITION_MIDDLE = "middle";
 const MOD_POSITION_END = "end";
+const MOD_ENTRY_TYPE_SINGLE = "single";
+const MOD_ENTRY_TYPE_GROUP = "group";
+const MODS_PANEL_FILTER_ALL = "all";
+const MOD_POSITION_DEFINITIONS = [
+  { key: MOD_POSITION_START, label: "Beginning", icon: "fa-hourglass-start" },
+  { key: MOD_POSITION_MIDDLE, label: "After chars", icon: "fa-person-circle-plus" },
+  { key: MOD_POSITION_END, label: "End", icon: "fa-hourglass-end" },
+];
 const MOD_IMAGE_TYPE_DEFINITIONS = [
   { key: "portrait", label: "Portrait", icon: "fa-user" },
   { key: "fullbody", label: "Full body", icon: "fa-person" },
@@ -105,6 +117,29 @@ function normalizeModPosition(value) {
   return MOD_POSITION_MIDDLE;
 }
 
+function normalizeModsPanelPositionFilter(value) {
+  const normalized = normalizeModPosition(value);
+  if (value === MOD_POSITION_START || value === MOD_POSITION_MIDDLE || value === MOD_POSITION_END) {
+    return normalized;
+  }
+
+  return MODS_PANEL_FILTER_ALL;
+}
+
+function getModPositionDefinition(value) {
+  const normalized = normalizeModPosition(value);
+  return MOD_POSITION_DEFINITIONS.find((definition) => definition.key === normalized) || MOD_POSITION_DEFINITIONS[1];
+}
+
+function getModsPanelFilterLabel(value) {
+  const normalized = normalizeModsPanelPositionFilter(value);
+  if (normalized === MODS_PANEL_FILTER_ALL) {
+    return "All";
+  }
+
+  return getModPositionDefinition(normalized).label;
+}
+
 function normalizeModImageTypes(value) {
   const normalized = createDefaultModImageTypes();
   if (!value || typeof value !== "object") {
@@ -141,20 +176,116 @@ function deriveModShortname(shortnameValue, fullContentValue) {
   return "New mod";
 }
 
+function deriveModGroupName(value) {
+  const groupName = compactWhitespace(value).slice(0, MOD_SHORTNAME_MAX_LENGTH);
+  return groupName || "New group";
+}
+
+function normalizeRequiredModShortname(value) {
+  return compactWhitespace(value).slice(0, MOD_SHORTNAME_MAX_LENGTH);
+}
+
 function createModId() {
   return `mod_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function normalizeModEntry(mod) {
+function createModItemId() {
+  return `moditem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeModItemEntry(item) {
+  const fullContent = String(item?.fullContent || "").replace(/\r\n?/g, "\n").trim();
+  return {
+    id: String(item?.id || "").trim() || createModItemId(),
+    shortname: deriveModShortname(item?.shortname, fullContent),
+    fullContent,
+  };
+}
+
+function normalizeSingleModEntry(mod, baseEntry) {
   const fullContent = String(mod?.fullContent || "").replace(/\r\n?/g, "\n").trim();
   return {
+    ...baseEntry,
+    type: MOD_ENTRY_TYPE_SINGLE,
+    shortname: deriveModShortname(mod?.shortname, fullContent),
+    fullContent,
+  };
+}
+
+function normalizeGroupModEntry(mod, baseEntry) {
+  const rawItems = Array.isArray(mod?.items) ? mod.items : [];
+  const items = rawItems.map((item) => normalizeModItemEntry(item));
+
+  if (!items.length) {
+    items.push(normalizeModItemEntry({
+      shortname: mod?.shortname,
+      fullContent: mod?.fullContent,
+    }));
+  }
+
+  const selectedItemId = String(mod?.selectedItemId || mod?.selectedModId || "").trim();
+  const selectedExists = items.some((item) => item.id === selectedItemId);
+
+  return {
+    ...baseEntry,
+    type: MOD_ENTRY_TYPE_GROUP,
+    groupName: deriveModGroupName(mod?.groupName || mod?.shortname),
+    selectedItemId: selectedExists ? selectedItemId : items[0].id,
+    items,
+  };
+}
+
+function isModGroup(mod) {
+  return mod?.type === MOD_ENTRY_TYPE_GROUP;
+}
+
+function getSelectedModItem(mod) {
+  if (!isModGroup(mod)) {
+    return null;
+  }
+
+  const items = Array.isArray(mod.items) ? mod.items : [];
+  if (!items.length) {
+    return null;
+  }
+
+  const selected = items.find((item) => item.id === mod.selectedItemId);
+  return selected || items[0];
+}
+
+function getModPromptContent(mod) {
+  if (isModGroup(mod)) {
+    const selectedItem = getSelectedModItem(mod);
+    const content = String(selectedItem?.fullContent || "").trim();
+    if (content) {
+      return content;
+    }
+
+    return String(selectedItem?.shortname || "").trim();
+  }
+
+  const content = String(mod?.fullContent || "").trim();
+  if (content) {
+    return content;
+  }
+
+  return String(mod?.shortname || "").trim();
+}
+
+function normalizeModEntry(mod) {
+  const baseEntry = {
     id: String(mod?.id || "").trim() || createModId(),
     enabled: mod?.enabled !== false,
     position: normalizeModPosition(mod?.position),
-    shortname: deriveModShortname(mod?.shortname, fullContent),
-    fullContent,
     imageTypes: normalizeModImageTypes(mod?.imageTypes),
   };
+
+  const type = String(mod?.type || "").trim().toLowerCase();
+  if (type === MOD_ENTRY_TYPE_GROUP || Array.isArray(mod?.items)) {
+    return normalizeGroupModEntry(mod, baseEntry);
+  }
+
+  return normalizeSingleModEntry(mod, baseEntry);
 }
 
 function getModsSettingsRaw() {
@@ -212,7 +343,7 @@ function buildModsPromptForPosition(position, imageType) {
     .filter((mod) => mod.enabled)
     .filter((mod) => mod.position === position)
     .filter((mod) => mod.imageTypes?.[imageType] !== false)
-    .map((mod) => String(mod.fullContent || "").trim() || String(mod.shortname || "").trim())
+    .map((mod) => getModPromptContent(mod))
     .map((modText) => ensureTrailingComma(modText))
     .filter(Boolean);
 
@@ -613,6 +744,44 @@ function compactPromptToSingleLine(text) {
     .trim();
 }
 
+function escapeRegExpLiteral(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function replaceViewerNameWithViewer(text, viewerName) {
+  const source = String(text || "");
+  const normalizedViewerName = String(viewerName || "").trim();
+  if (!source || !normalizedViewerName) {
+    return source;
+  }
+
+  const escapedName = escapeRegExpLiteral(normalizedViewerName);
+  const viewerNamePattern = new RegExp(escapedName, "gi");
+  return source.replace(viewerNamePattern, "viewer");
+}
+
+function resolvePromptMacros(context, text, data = null) {
+  let value = String(text ?? "");
+
+  if (typeof context?.substituteParamsExtended === "function") {
+    try {
+      return String(context.substituteParamsExtended(value));
+    } catch {
+      // fall through to next resolver
+    }
+  }
+
+  if (typeof context?.substituteParams === "function") {
+    try {
+      return String(context.substituteParams(value));
+    } catch {
+      // fall through to raw value
+    }
+  }
+
+  return value;
+}
+
 async function generateWithChatStopSemantics(context, promptText) {
   const sendTextarea = $("#send_textarea");
   const previousInputValue = sendTextarea.length ? String(sendTextarea.val() || "") : "";
@@ -793,6 +962,10 @@ async function generateCharacterImage(mode, triggerButton = null) {
 
     llmVisual = stripReasoningFromLlmOutput(llmVisual, context);
 
+    if (mode === "viewer-eyes") {
+      llmVisual = replaceViewerNameWithViewer(llmVisual, viewerCharacter?.name);
+    }
+
     if (promptToast) {
       toastr.clear(promptToast);
       promptToast = null;
@@ -806,6 +979,11 @@ async function generateCharacterImage(mode, triggerButton = null) {
     let finalTrigger = [modsStart, characterDescription, modsMiddle, String(llmVisual || "").trim(), modsEnd]
       .filter(Boolean)
       .join("\n\n")
+      .replace(/\r\n/g, "\n")
+      .trim();
+
+    // Expand macros before preview so injected mod macros are visible in the modal.
+    finalTrigger = resolvePromptMacros(context, finalTrigger, data)
       .replace(/\r\n/g, "\n")
       .trim();
 
@@ -823,6 +1001,11 @@ async function generateCharacterImage(mode, triggerButton = null) {
 
       finalTrigger = String(editedPrompt || "").replace(/\r\n/g, "\n").trim();
     }
+
+    // Expand macros again after preview to apply macros manually added by the user.
+    finalTrigger = resolvePromptMacros(context, finalTrigger, data)
+      .replace(/\r\n/g, "\n")
+      .trim();
 
     if (!finalTrigger) {
       throw new Error("Empty image trigger");
@@ -885,6 +1068,11 @@ async function generateFreeImage() {
     .replace(/\r\n/g, "\n")
     .trim();
 
+  // Expand macros before preview so user sees resolved values immediately.
+  finalTrigger = resolvePromptMacros(context, finalTrigger, data)
+    .replace(/\r\n/g, "\n")
+    .trim();
+
   const editedPrompt = await callGenericPopup(
     'Write your image prompt. Press "Cancel" to abort generation.',
     POPUP_TYPE.INPUT,
@@ -897,6 +1085,12 @@ async function generateFreeImage() {
   }
 
   finalTrigger = String(editedPrompt || "").replace(/\r\n/g, "\n").trim();
+
+  // Expand macros added/edited by user in preview.
+  finalTrigger = resolvePromptMacros(context, finalTrigger, data)
+    .replace(/\r\n/g, "\n")
+    .trim();
+
   if (!finalTrigger) {
     toastr.warning("Prompt is empty.", "Character Details");
     return;
@@ -1366,6 +1560,9 @@ function renderManagerPanel() {
         <button class="character-manager__collapse" type="button" data-action="add-character-from-persona" title="Add character from persona">
           <i class="fa-solid fa-user-plus"></i>
         </button>
+        <button class="character-manager__collapse" type="button" data-action="generate-character-ai" title="Generate character with AI">
+          <i class="fa-solid fa-robot"></i>
+        </button>
         <button class="menu_button" type="button" data-action="add-character">Add</button>
       </div>
     </div>
@@ -1408,6 +1605,17 @@ function ensureActiveGroup(character) {
 function ensureActiveGroups(data) {
   for (const character of data.characters || []) {
     ensureActiveGroup(character);
+  }
+}
+
+function collapseOutfitsToActiveOnly(character) {
+  if (!character || !Array.isArray(character.clothingGroups)) {
+    return;
+  }
+
+  ensureActiveGroup(character);
+  for (const group of character.clothingGroups) {
+    group.collapsed = group.id !== character.activeGroupId;
   }
 }
 
@@ -1977,9 +2185,23 @@ function updateDescriptionsOnly() {
   persistDescriptionsForCurrentChat(context, state);
 }
 
-function handleAddCharacter() {
+async function handleAddCharacter() {
+  const characterName = await Popup.show.input(
+    "Add character",
+    "Enter the name for the new character:",
+    "New character",
+    { okButton: "Add", cancelButton: "Cancel" },
+  );
+
+  if (characterName === null) {
+    return;
+  }
+
+  const name = String(characterName || "").trim() || "New character";
+
   const context = getContext();
   const newCharacter = createCharacter(context);
+  newCharacter.name = name;
   state.characters.push(newCharacter);
   state.activeCharacterId = newCharacter.id;
   saveAndRender();
@@ -2863,6 +3085,7 @@ function upsertPersonaCharacterIntoState(data, context, personaEntry, options = 
   applyImportedCustomFieldValues(context, personaEntry.customFieldValues || {});
   ensureActiveCharacter(data);
   ensureActiveGroups(data);
+  collapseOutfitsToActiveOnly(nextCharacter);
   return true;
 }
 
@@ -3040,6 +3263,9 @@ async function handleImportCharacterDetails() {
       const { customFieldValues, avatars, ...nextCharacterData } = nextData || {};
       applyImportedCustomFieldValues(context, customFieldValues);
       applyImportedCharacterAvatars(context, avatars, nextCharacterData);
+      for (const character of Array.isArray(nextCharacterData?.characters) ? nextCharacterData.characters : []) {
+        collapseOutfitsToActiveOnly(character);
+      }
       setCharacterDetailsData(nextCharacterData);
       toastr.success("Character details imported.", "Character Details");
     });
@@ -3059,11 +3285,32 @@ function renderModsPanelVisibility() {
 
   if (!visible) {
     openModImageTypesForId = null;
+    openModPositionForId = null;
+    openModGroupForId = null;
     return;
   }
 
   renderLeftDrawerState();
+  renderModsPositionFilterState();
   renderModsPanel();
+}
+
+function renderModsPositionFilterState() {
+  if (!modsPositionFilterRoot?.length) {
+    return;
+  }
+
+  const filterValue = normalizeModsPanelPositionFilter(modsPanelPositionFilter);
+  modsPositionFilterRoot
+    .find("[data-mods-filter]")
+    .each((_, element) => {
+      const button = $(element);
+      const buttonFilter = normalizeModsPanelPositionFilter(button.data("modsFilter"));
+      const active = buttonFilter === filterValue;
+      button.toggleClass("is-active", active);
+      button.attr("aria-pressed", active ? "true" : "false");
+      button.attr("tabindex", active ? "0" : "-1");
+    });
 }
 
 function getEnabledModImageTypeCount(mod) {
@@ -3104,11 +3351,45 @@ function renderModsPanel() {
     return;
   }
 
-  const html = mods.map((mod) => {
+  const filterValue = normalizeModsPanelPositionFilter(modsPanelPositionFilter);
+  const visibleMods = mods.filter((mod) => {
+    if (filterValue === MODS_PANEL_FILTER_ALL) {
+      return true;
+    }
+
+    return normalizeModPosition(mod.position) === filterValue;
+  });
+
+  if (openModImageTypesForId && !visibleMods.some((mod) => mod.id === openModImageTypesForId)) {
+    openModImageTypesForId = null;
+  }
+
+  if (openModPositionForId && !visibleMods.some((mod) => mod.id === openModPositionForId)) {
+    openModPositionForId = null;
+  }
+
+  if (openModGroupForId && !visibleMods.some((mod) => mod.id === openModGroupForId)) {
+    openModGroupForId = null;
+  }
+
+  if (!visibleMods.length) {
+    modsPanelRoot.html(`<div class="character-mods-panel__empty">No mods in ${escapeHtml(getModsPanelFilterLabel(filterValue))}.</div>`);
+    return;
+  }
+
+  const html = visibleMods.map((mod) => {
+    const groupEntry = isModGroup(mod);
+    const selectedItem = getSelectedModItem(mod);
+    const displayedShortname = groupEntry
+      ? `${String(mod.groupName || "Group").trim()} - ${String(selectedItem?.shortname || "Unnamed").trim() || "Unnamed"}`
+      : String(mod.shortname || "").trim() || "Unnamed";
     const enabledTypesCount = getEnabledModImageTypeCount(mod);
     const allTypesEnabled = enabledTypesCount === MOD_IMAGE_TYPE_DEFINITIONS.length;
     const typesPopupOpen = openModImageTypesForId === mod.id;
+    const groupPopupOpen = openModGroupForId === mod.id;
     const position = normalizeModPosition(mod.position);
+    const positionDefinition = getModPositionDefinition(position);
+    const positionPopupOpen = openModPositionForId === mod.id;
 
     const typeButtons = MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => {
       const typeEnabled = mod.imageTypes?.[definition.key] !== false;
@@ -3126,8 +3407,90 @@ function renderModsPanel() {
       `;
     }).join("");
 
+    const positionOptions = MOD_POSITION_DEFINITIONS.map((definition) => {
+      const selected = position === definition.key;
+      return `
+        <button
+          type="button"
+          class="mod-item__position-option ${selected ? "is-active" : ""}"
+          data-action="set-mod-position"
+          data-mod-id="${escapeHtml(mod.id)}"
+          data-position="${escapeHtml(definition.key)}"
+          title="${escapeHtml(definition.label)}"
+        >
+          <i class="fa-solid ${definition.icon}"></i>
+          <span>${escapeHtml(definition.label)}</span>
+        </button>
+      `;
+    }).join("");
+
+    const groupOptions = (Array.isArray(mod.items) ? mod.items : []).map((item) => {
+      const selected = item.id === selectedItem?.id;
+      return `
+        <button
+          type="button"
+          class="mod-item__group-option ${selected ? "is-active" : ""}"
+          data-action="select-mod-group-item"
+          data-mod-id="${escapeHtml(mod.id)}"
+          data-item-id="${escapeHtml(item.id)}"
+          title="${escapeHtml(item.shortname)}"
+        >
+          ${escapeHtml(item.shortname)}
+        </button>
+      `;
+    }).join("");
+
+    const shortnameControl = groupEntry
+      ? `
+        <div class="mod-item__group-wrap">
+          <button
+            type="button"
+            class="menu_button mod-item__group-trigger"
+            data-action="toggle-mod-group-menu"
+            data-mod-id="${escapeHtml(mod.id)}"
+            title="Select active group mod"
+          >
+            <span class="mod-item__group-trigger-label">${escapeHtml(displayedShortname)}</span>
+            <i class="fa-solid fa-chevron-down"></i>
+          </button>
+          <div class="mod-item__group-popup ${groupPopupOpen ? "is-open" : ""}">
+            ${groupOptions}
+          </div>
+        </div>
+      `
+      : `
+        <div
+          class="mod-item__shortname"
+          title="${escapeHtml(displayedShortname)}"
+        >${escapeHtml(displayedShortname)}</div>
+      `;
+
+    const secondaryActionButton = groupEntry
+      ? `
+        <button
+          type="button"
+          class="mod-item__action"
+          data-action="add-mod-to-group"
+          data-mod-id="${escapeHtml(mod.id)}"
+          title="Add mod to group"
+        >
+          <i class="fa-solid fa-plus"></i>
+        </button>
+      `
+      : `
+        <button
+          type="button"
+          class="mod-item__action"
+          data-action="convert-mod-to-group"
+          data-mod-id="${escapeHtml(mod.id)}"
+          title="Convert to group"
+        >
+          <i class="fa-solid fa-layer-group"></i>
+        </button>
+      `;
+
     return `
-      <div class="mod-item" data-mod-id="${escapeHtml(mod.id)}">
+      <div class="mod-item ${groupEntry ? "mod-item--group" : ""}" data-mod-id="${escapeHtml(mod.id)}">
         <span class="mod-item__drag-handle" draggable="true" title="Drag to reorder">
           <i class="fa-solid fa-grip-vertical"></i>
         </span>
@@ -3154,27 +3517,31 @@ function renderModsPanel() {
             ${typeButtons}
           </div>
         </div>
-        <select class="text_pole mod-item__position" data-action="set-mod-position" data-mod-id="${escapeHtml(mod.id)}">
-          <option value="start" ${position === MOD_POSITION_START ? "selected" : ""}>Beginning</option>
-          <option value="middle" ${position === MOD_POSITION_MIDDLE ? "selected" : ""}>After chars</option>
-          <option value="end" ${position === MOD_POSITION_END ? "selected" : ""}>End</option>
-        </select>
-        <button
-          type="button"
-          class="mod-item__shortname"
-          data-action="edit-mod-shortname"
-          data-mod-id="${escapeHtml(mod.id)}"
-          title="Edit shortname"
-        >${escapeHtml(mod.shortname)}</button>
+        <div class="mod-item__position-wrap">
+          <button
+            type="button"
+            class="menu_button mod-item__position-trigger"
+            data-action="toggle-mod-position-menu"
+            data-mod-id="${escapeHtml(mod.id)}"
+            title="${escapeHtml(positionDefinition.label)}"
+          >
+            <i class="fa-solid ${positionDefinition.icon}"></i>
+          </button>
+          <div class="mod-item__position-popup ${positionPopupOpen ? "is-open" : ""}">
+            ${positionOptions}
+          </div>
+        </div>
+        ${shortnameControl}
         <button
           type="button"
           class="mod-item__action"
-          data-action="edit-mod-content"
+          data-action="edit-mod-entry"
           data-mod-id="${escapeHtml(mod.id)}"
-          title="Edit full mod content"
+          title="Edit mod"
         >
           <i class="fa-solid fa-pen-to-square"></i>
         </button>
+        ${secondaryActionButton}
         <button
           type="button"
           class="mod-item__action"
@@ -3192,7 +3559,11 @@ function renderModsPanel() {
 }
 
 function clearModDragIndicators() {
-  modsPanelRoot?.find(".mod-item").removeClass("drop-before drop-after");
+  modsPanelRoot?.find(".mod-item")
+    .removeClass("drop-before drop-after drop-into")
+    .each((_, element) => {
+      delete element.dataset.dropMode;
+    });
 }
 
 function resolveModItemElement(event) {
@@ -3204,39 +3575,131 @@ function resolveModItemElement(event) {
   return target.closest(".mod-item");
 }
 
+function resolveModDropMode(modItemElement, mods, draggedId, nativeEvent) {
+  const targetId = String(modItemElement?.dataset?.modId || "").trim();
+  if (!targetId || !draggedId || targetId === draggedId) {
+    return null;
+  }
+
+  const draggedMod = mods.find((mod) => mod.id === draggedId);
+  const targetMod = mods.find((mod) => mod.id === targetId);
+  if (!draggedMod || !targetMod) {
+    return null;
+  }
+
+  const rect = modItemElement.getBoundingClientRect();
+  const pointerY = Number.isFinite(nativeEvent?.clientY) ? nativeEvent.clientY : (rect.top + rect.height / 2);
+  const offsetY = pointerY - rect.top;
+  const ratio = rect.height > 0 ? offsetY / rect.height : 0.5;
+
+  if (isModGroup(targetMod) && !isModGroup(draggedMod)) {
+    if (ratio >= 0.25 && ratio <= 0.75) {
+      return "into";
+    }
+
+    return ratio < 0.25 ? "before" : "after";
+  }
+
+  return ratio <= 0.5 ? "before" : "after";
+}
+
 function getModById(modId) {
   return getModsSettings().find((mod) => mod.id === modId) || null;
 }
 
-function closeModImageTypesPopup() {
-  if (!openModImageTypesForId) {
+function handleModsPositionFilterClick(event) {
+  const actionOwner = event.target.closest("[data-mods-filter]");
+  if (!actionOwner) {
     return;
   }
 
+  const nextFilter = normalizeModsPanelPositionFilter(actionOwner.dataset.modsFilter);
+  if (modsPanelPositionFilter === nextFilter) {
+    return;
+  }
+
+  modsPanelPositionFilter = nextFilter;
   openModImageTypesForId = null;
+  openModPositionForId = null;
+  openModGroupForId = null;
+  renderModsPositionFilterState();
   renderModsPanel();
 }
 
-async function handleAddMod() {
-  const value = await callGenericPopup(
-    "Add mod",
-    POPUP_TYPE.INPUT,
-    "",
-    { rows: 8, okButton: "Add", cancelButton: "Cancel" },
-  );
+async function showModItemEditorPopup({ title, okButton, shortnameValue = "", detailsValue = "" } = {}) {
+  let nextShortname = String(shortnameValue || "").trim();
+  let nextDetails = String(detailsValue || "").replace(/\r\n?/g, "\n").trim();
 
-  if (value === null || value === undefined || value === false) {
+  while (true) {
+    const popup = new Popup(
+      `<h3>${escapeHtml(title || "Edit mod")}</h3>`,
+      POPUP_TYPE.TEXT,
+      "",
+      {
+        okButton: okButton || "Save",
+        cancelButton: "Cancel",
+        leftAlign: true,
+        customInputs: [
+          {
+            id: "st_extension_mod_shortname",
+            label: "Shortname",
+            type: "text",
+            defaultState: nextShortname,
+          },
+          {
+            id: "st_extension_mod_details",
+            label: "Details",
+            type: "textarea",
+            rows: 8,
+            defaultState: nextDetails,
+          },
+        ],
+      },
+    );
+
+    await popup.show();
+    if (popup.result !== 1) {
+      return null;
+    }
+
+    const shortnameInput = normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_shortname"));
+    const detailsInput = String(popup.inputResults?.get("st_extension_mod_details") || "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
+
+    if (!shortnameInput) {
+      toastr.warning("Shortname is required.", "Character Details");
+      nextDetails = detailsInput;
+      continue;
+    }
+
+    return {
+      shortname: shortnameInput,
+      fullContent: detailsInput,
+    };
+  }
+}
+
+async function handleAddMod() {
+  const edited = await showModItemEditorPopup({
+    title: "Create mod",
+    okButton: "Add",
+    shortnameValue: "",
+    detailsValue: "",
+  });
+
+  if (!edited) {
     return;
   }
 
-  const fullContent = String(value || "").replace(/\r\n?/g, "\n").trim();
   const mods = getModsSettings();
   mods.push({
     id: createModId(),
+    type: MOD_ENTRY_TYPE_SINGLE,
     enabled: true,
     position: MOD_POSITION_MIDDLE,
-    shortname: deriveModShortname("", fullContent),
-    fullContent,
+    shortname: edited.shortname,
+    fullContent: edited.fullContent,
     imageTypes: createDefaultModImageTypes(),
   });
   saveModsSettings(mods);
@@ -3264,8 +3727,57 @@ function handleModImageTypesMenuToggle(actionOwner) {
     return;
   }
 
+  openModPositionForId = null;
+  openModGroupForId = null;
   openModImageTypesForId = openModImageTypesForId === modId ? null : modId;
   renderModsPanel();
+}
+
+function handleModPositionMenuToggle(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  openModImageTypesForId = null;
+  openModGroupForId = null;
+  openModPositionForId = openModPositionForId === modId ? null : modId;
+  renderModsPanel();
+}
+
+function handleModGroupMenuToggle(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  openModImageTypesForId = null;
+  openModPositionForId = null;
+  openModGroupForId = openModGroupForId === modId ? null : modId;
+  renderModsPanel();
+}
+
+function handleModGroupItemSelect(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  const itemId = String(actionOwner?.dataset?.itemId || "").trim();
+  if (!modId || !itemId) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1 || !isModGroup(mods[index])) {
+    return;
+  }
+
+  const items = Array.isArray(mods[index].items) ? mods[index].items : [];
+  if (!items.some((item) => item.id === itemId)) {
+    return;
+  }
+
+  mods[index].selectedItemId = itemId;
+  openModGroupForId = null;
+  saveModsSettings(mods);
 }
 
 function handleModImageTypeToggle(actionOwner) {
@@ -3294,6 +3806,7 @@ function handleModImageTypeToggle(actionOwner) {
 
 function handleModPositionChange(actionOwner) {
   const modId = String(actionOwner?.dataset?.modId || "").trim();
+  const nextPosition = normalizeModPosition(actionOwner?.dataset?.position || actionOwner?.value);
   if (!modId) {
     return;
   }
@@ -3304,74 +3817,137 @@ function handleModPositionChange(actionOwner) {
     return;
   }
 
-  mods[index].position = normalizeModPosition(actionOwner.value);
-  saveModsSettings(mods, { rerender: false });
-}
-
-async function handleModShortnameEdit(actionOwner) {
-  const modId = String(actionOwner?.dataset?.modId || "").trim();
-  if (!modId) {
-    return;
-  }
-
-  const mod = getModById(modId);
-  if (!mod) {
-    return;
-  }
-
-  const value = await callGenericPopup(
-    "Edit mod shortname",
-    POPUP_TYPE.INPUT,
-    mod.shortname,
-    { rows: 1, okButton: "Save", cancelButton: "Cancel" },
-  );
-
-  if (value === null || value === undefined || value === false) {
-    return;
-  }
-
-  const mods = getModsSettings();
-  const index = mods.findIndex((item) => item.id === modId);
-  if (index === -1) {
-    return;
-  }
-
-  mods[index].shortname = deriveModShortname(value, mods[index].fullContent);
+  mods[index].position = nextPosition;
+  openModPositionForId = null;
   saveModsSettings(mods);
 }
 
-async function handleModContentEdit(actionOwner) {
+async function handleConvertModToGroup(actionOwner) {
   const modId = String(actionOwner?.dataset?.modId || "").trim();
   if (!modId) {
     return;
   }
 
-  const mod = getModById(modId);
-  if (!mod) {
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1 || isModGroup(mods[index])) {
     return;
   }
 
-  const value = await callGenericPopup(
-    "Edit mod content",
-    POPUP_TYPE.INPUT,
-    String(mod.fullContent || "").trim() || String(mod.shortname || "").trim(),
-    { rows: 8, okButton: "Save", cancelButton: "Cancel" },
+  const groupNameInput = await Popup.show.input(
+    "Convert to group",
+    "Enter name for this group:",
+    mods[index].shortname,
+    { okButton: "Convert", cancelButton: "Cancel", rows: 1 },
   );
 
-  if (value === null || value === undefined || value === false) {
+  if (groupNameInput === null) {
+    return;
+  }
+
+  const groupName = normalizeRequiredModShortname(groupNameInput);
+  if (!groupName) {
+    toastr.warning("Group name is required.", "Character Details");
+    return;
+  }
+
+  const source = mods[index];
+  const groupItem = normalizeModItemEntry({
+    shortname: source.shortname,
+    fullContent: source.fullContent,
+  });
+
+  mods[index] = normalizeModEntry({
+    ...source,
+    type: MOD_ENTRY_TYPE_GROUP,
+    groupName,
+    items: [groupItem],
+    selectedItemId: groupItem.id,
+  });
+  openModGroupForId = null;
+  saveModsSettings(mods);
+}
+
+async function handleAddModToGroup(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
     return;
   }
 
   const mods = getModsSettings();
-  const index = mods.findIndex((item) => item.id === modId);
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1 || !isModGroup(mods[index])) {
+    return;
+  }
+
+  const edited = await showModItemEditorPopup({
+    title: "Add mod to group",
+    okButton: "Add",
+    shortnameValue: "",
+    detailsValue: "",
+  });
+
+  if (!edited) {
+    return;
+  }
+
+  const nextItem = normalizeModItemEntry({
+    shortname: edited.shortname,
+    fullContent: edited.fullContent,
+  });
+  mods[index].items = Array.isArray(mods[index].items) ? mods[index].items : [];
+  mods[index].items.push(nextItem);
+  mods[index].selectedItemId = nextItem.id;
+  openModGroupForId = null;
+  saveModsSettings(mods);
+}
+
+async function handleModEntryEdit(actionOwner) {
+  const modId = String(actionOwner?.dataset?.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1) {
     return;
   }
 
-  mods[index].fullContent = String(value || "").replace(/\r\n?/g, "\n").trim();
-  if (!String(mods[index].shortname || "").trim()) {
-    mods[index].shortname = deriveModShortname("", mods[index].fullContent);
+  const mod = mods[index];
+  const editingGroupItem = isModGroup(mod) ? getSelectedModItem(mod) : null;
+  const edited = await showModItemEditorPopup({
+    title: isModGroup(mod) ? "Edit selected group mod" : "Edit mod",
+    okButton: "Save",
+    shortnameValue: isModGroup(mod) ? editingGroupItem?.shortname : mod.shortname,
+    detailsValue: isModGroup(mod) ? editingGroupItem?.fullContent : mod.fullContent,
+  });
+
+  if (!edited) {
+    return;
   }
+
+  if (isModGroup(mod)) {
+    if (!editingGroupItem) {
+      return;
+    }
+
+    mod.items = (Array.isArray(mod.items) ? mod.items : []).map((item) => {
+      if (item.id !== editingGroupItem.id) {
+        return item;
+      }
+
+      return normalizeModItemEntry({
+        ...item,
+        shortname: edited.shortname,
+        fullContent: edited.fullContent,
+      });
+    });
+  } else {
+    mod.shortname = edited.shortname;
+    mod.fullContent = edited.fullContent;
+  }
+
   saveModsSettings(mods);
 }
 
@@ -3381,9 +3957,51 @@ async function handleModDelete(actionOwner) {
     return;
   }
 
+  const mods = getModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  const mod = mods[index];
+  if (!isModGroup(mod)) {
+    const confirmed = await Popup.show.confirm(
+      "Delete mod",
+      "Are you sure you want to delete this mod?",
+      { okButton: "Delete", cancelButton: "Cancel" },
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const nextMods = mods.filter((item) => item.id !== modId);
+    if (openModImageTypesForId === modId) {
+      openModImageTypesForId = null;
+    }
+    if (openModPositionForId === modId) {
+      openModPositionForId = null;
+    }
+    if (openModGroupForId === modId) {
+      openModGroupForId = null;
+    }
+    saveModsSettings(nextMods);
+    return;
+  }
+
+  const selectedItem = getSelectedModItem(mod);
+  if (!selectedItem) {
+    return;
+  }
+
+  const itemCount = Array.isArray(mod.items) ? mod.items.length : 0;
+  const deleteMessage = itemCount <= 1
+    ? "Are you sure you want to delete selected mod from this group? If you remove this mod whole group will be removed"
+    : "Are you sure you want to delete selected mod from this group?";
+
   const confirmed = await Popup.show.confirm(
-    "Delete mod",
-    "Are you sure you want to delete this mod?",
+    "Delete selected group mod",
+    deleteMessage,
     { okButton: "Delete", cancelButton: "Cancel" },
   );
 
@@ -3391,10 +4009,25 @@ async function handleModDelete(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings().filter((mod) => mod.id !== modId);
-  if (openModImageTypesForId === modId) {
-    openModImageTypesForId = null;
+  if (itemCount <= 1) {
+    const nextMods = mods.filter((item) => item.id !== modId);
+    if (openModImageTypesForId === modId) {
+      openModImageTypesForId = null;
+    }
+    if (openModPositionForId === modId) {
+      openModPositionForId = null;
+    }
+    if (openModGroupForId === modId) {
+      openModGroupForId = null;
+    }
+    saveModsSettings(nextMods);
+    return;
   }
+
+  const selectedIndex = mod.items.findIndex((item) => item.id === selectedItem.id);
+  mod.items.splice(selectedIndex, 1);
+  const nextSelection = mod.items[Math.min(selectedIndex, mod.items.length - 1)] || mod.items[0];
+  mod.selectedItemId = nextSelection?.id || "";
   saveModsSettings(mods);
 }
 
@@ -3443,15 +4076,20 @@ function handleModDragOver(event) {
 
   event.preventDefault();
   const nativeEvent = event.originalEvent || event;
-  const rect = modItemElement.getBoundingClientRect();
-  const offsetY = nativeEvent.clientY - rect.top;
-  const ratio = rect.height > 0 ? offsetY / rect.height : 0.5;
+  const mods = getModsSettings();
+  const dropMode = resolveModDropMode(modItemElement, mods, draggedModId, nativeEvent);
+  if (!dropMode) {
+    return;
+  }
 
   clearModDragIndicators();
-  if (ratio <= 0.5) {
+  modItemElement.dataset.dropMode = dropMode;
+  if (dropMode === "before") {
     modItemElement.classList.add("drop-before");
-  } else {
+  } else if (dropMode === "after") {
     modItemElement.classList.add("drop-after");
+  } else if (dropMode === "into") {
+    modItemElement.classList.add("drop-into");
   }
 }
 
@@ -3477,7 +4115,54 @@ function handleModDrop(event) {
     return;
   }
 
-  const dropAfter = modItemElement.classList.contains("drop-after");
+  const dropMode = String(modItemElement.dataset.dropMode || resolveModDropMode(modItemElement, mods, draggedId, nativeEvent) || "").trim();
+  const draggedModEntry = mods[draggedIndex];
+  const targetMod = mods[targetIndex];
+
+  if (dropMode === "into" && isModGroup(targetMod) && !isModGroup(draggedModEntry)) {
+    void (async () => {
+      const shouldConvert = await Popup.show.confirm(
+        "Add to group",
+        "Add this mod to a group(cannot be reversed)",
+        { okButton: "Yes", cancelButton: "No" },
+      );
+
+      if (!shouldConvert) {
+        clearModDragIndicators();
+        return;
+      }
+
+      const nextMods = getModsSettings();
+      const nextDraggedIndex = nextMods.findIndex((mod) => mod.id === draggedId);
+      const nextTargetIndex = nextMods.findIndex((mod) => mod.id === targetId);
+      if (nextDraggedIndex === -1 || nextTargetIndex === -1) {
+        return;
+      }
+
+      const [sourceMod] = nextMods.splice(nextDraggedIndex, 1);
+      const adjustedTargetIndex = nextDraggedIndex < nextTargetIndex ? nextTargetIndex - 1 : nextTargetIndex;
+      const targetGroup = nextMods[adjustedTargetIndex];
+      if (!isModGroup(targetGroup)) {
+        return;
+      }
+
+      const nextItem = normalizeModItemEntry({
+        shortname: sourceMod.shortname,
+        fullContent: sourceMod.fullContent,
+      });
+
+      targetGroup.items = Array.isArray(targetGroup.items) ? targetGroup.items : [];
+      targetGroup.items.push(nextItem);
+      targetGroup.selectedItemId = nextItem.id;
+
+      openModImageTypesForId = null;
+      openModPositionForId = null;
+      openModGroupForId = null;
+      saveModsSettings(nextMods);
+    })();
+    return;
+  }
+
   const [draggedMod] = mods.splice(draggedIndex, 1);
   let insertIndex = targetIndex;
 
@@ -3485,13 +4170,15 @@ function handleModDrop(event) {
     insertIndex -= 1;
   }
 
-  if (dropAfter) {
+  if (dropMode === "after") {
     insertIndex += 1;
   }
 
   insertIndex = Math.max(0, Math.min(mods.length, insertIndex));
   mods.splice(insertIndex, 0, draggedMod);
   openModImageTypesForId = null;
+  openModPositionForId = null;
+  openModGroupForId = null;
   saveModsSettings(mods);
 }
 
@@ -3526,23 +4213,49 @@ function handleModPanelClick(event) {
     return;
   }
 
+  if (action === "toggle-mod-group-menu") {
+    handleModGroupMenuToggle(actionOwner);
+    return;
+  }
+
+  if (action === "select-mod-group-item") {
+    handleModGroupItemSelect(actionOwner);
+    return;
+  }
+
+  if (action === "toggle-mod-position-menu") {
+    handleModPositionMenuToggle(actionOwner);
+    return;
+  }
+
+  if (action === "set-mod-position") {
+    handleModPositionChange(actionOwner);
+    return;
+  }
+
   if (action === "toggle-mod-image-type") {
     handleModImageTypeToggle(actionOwner);
     return;
   }
 
-  if (action === "edit-mod-shortname") {
-    void handleModShortnameEdit(actionOwner);
+  if (action === "edit-mod-entry") {
+    void handleModEntryEdit(actionOwner);
     return;
   }
 
-  if (action === "edit-mod-content") {
-    void handleModContentEdit(actionOwner);
+  if (action === "convert-mod-to-group") {
+    void handleConvertModToGroup(actionOwner);
+    return;
+  }
+
+  if (action === "add-mod-to-group") {
+    void handleAddModToGroup(actionOwner);
     return;
   }
 
   if (action === "delete-mod") {
     void handleModDelete(actionOwner);
+    return;
   }
 }
 
@@ -3559,7 +4272,7 @@ function handleModPanelChange(event) {
 }
 
 function handleModPanelOutsideClick(event) {
-  if (!openModImageTypesForId) {
+  if (!openModImageTypesForId && !openModPositionForId && !openModGroupForId) {
     return;
   }
 
@@ -3568,7 +4281,18 @@ function handleModPanelOutsideClick(event) {
     return;
   }
 
-  closeModImageTypesPopup();
+  if (target?.closest?.(".mod-item__position-wrap")) {
+    return;
+  }
+
+  if (target?.closest?.(".mod-item__group-wrap")) {
+    return;
+  }
+
+  openModImageTypesForId = null;
+  openModPositionForId = null;
+  openModGroupForId = null;
+  renderModsPanel();
 }
 
 function handlePanelInput(event) {
@@ -3643,7 +4367,7 @@ function handlePanelInput(event) {
   }
 }
 
-function handlePanelClick(event) {
+async function handlePanelClick(event) {
   const action = event.target.dataset.action;
   const actionOwner = action ? event.target : event.target.closest("[data-action]");
   const resolvedAction = actionOwner?.dataset.action;
@@ -3663,7 +4387,32 @@ function handlePanelClick(event) {
 
   if (resolvedAction === "add-character") {
     managerExpanded = true;
-    return handleAddCharacter();
+    await handleAddCharacter();
+    return renderPanel();
+  }
+
+  if (resolvedAction === "generate-character-ai") {
+    void (async () => {
+      const request = await Popup.show.input(
+        "Generate character with AI",
+        "Describe what character should be added to the scene (for example: a mysterious stranger in a dark cloak).",
+        "",
+        { okButton: "Generate", cancelButton: "Cancel", rows: 2 },
+      );
+
+      if (request === null) {
+        return;
+      }
+
+      const requestText = String(request || "").trim();
+      if (!requestText) {
+        toastr.warning("Character request cannot be empty.", "Character Details");
+        return;
+      }
+
+      await runCharacterGenerationWithAI(requestText, $(actionOwner));
+    })();
+    return;
   }
 
   if (resolvedAction === "export-character-details") {
@@ -3796,9 +4545,7 @@ function handlePanelClick(event) {
   if (resolvedAction === "add-group") {
     const newGroup = createGroup(getContext());
     character.clothingGroups.push(newGroup);
-    if (!character.activeGroupId) {
-      character.activeGroupId = newGroup.id;
-    }
+    character.activeGroupId = newGroup.id;
     return saveAndRender();
   }
 
@@ -4110,6 +4857,7 @@ function bindEvents() {
   footerBackgroundButton.on("click", (event) => generateCharacterImage("background", $(event.currentTarget)));
   footerViewerEyesButton.on("click", (event) => generateCharacterImage("viewer-eyes", $(event.currentTarget)));
   footerSceneButton.on("click", (event) => generateCharacterImage("scene", $(event.currentTarget)));
+  modsPositionFilterRoot.on("click", handleModsPositionFilterClick);
   modsAddButton.on("click", () => {
     void handleAddMod();
   });
@@ -4154,6 +4902,7 @@ function initCharacterDetailsPanel() {
   mobileDrawerToggleButton = $("#st-extension-mobile-drawer-toggle");
   mobileDrawerLeftToggleButton = $("#st-extension-mobile-drawer-left-toggle");
   modsPanelRoot = $("#character-details-mods-panel");
+  modsPositionFilterRoot = $("#character-details-mods-position-filter");
   modsAddButton = $("#character-details-mods-add");
   footerGenerateButton = $("#character-details-generate");
   footerFreeGenerateButton = $("#character-details-free-generate");

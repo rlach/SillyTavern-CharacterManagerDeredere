@@ -221,8 +221,10 @@ function renderDiff(diff) {
 function renderItem(item) {
   const badge = item.action === "add" ? "badge-add" : item.action === "remove" ? "badge-remove" : "badge-change";
   const label = buildItemLabel(item);
-  const beforeText = formatDetail(item.before || item.payload || item.after, item, "before");
-  const afterText = formatDetail(item.after || item.payload, item, "after");
+  const beforeValue = item.before ?? item.payload ?? item.after;
+  const afterValue = item.after ?? item.payload;
+  const beforeText = formatDetail(beforeValue, item, "before");
+  const afterText = formatDetail(afterValue, item, "after");
   const before = item.before !== undefined ? `<div class=\"diff-before\">${beforeText}</div>` : "";
   const after = item.after !== undefined || item.action === "add" ? `<div class=\"diff-after\">${afterText}</div>` : "";
 
@@ -244,6 +246,7 @@ function renderItem(item) {
 function buildItemLabel(item) {
   const characterName = item.path?.character ? ` (${item.path.character})` : "";
   const groupName = item.path?.group ? ` in ${item.path.group}` : "";
+  const parentLayer = item.path?.layer ? ` under ${item.path.layer}` : "";
 
   if (item.type === "avatar") {
     const name = item.path?.character || "(unknown)";
@@ -269,10 +272,10 @@ function buildItemLabel(item) {
   
   if (item.type === "layer") {
     if (item.action === "add") {
-      return `Add layer: ${item.payload?.name || "(unnamed)"}${groupName}${characterName}`;
+      return `Add layer: ${item.payload?.name || "(unnamed)"}${parentLayer}${groupName}${characterName}`;
     }
     if (item.action === "remove") {
-      return `Remove layer: ${item.before?.name || "(unnamed)"}${groupName}${characterName}`;
+      return `Remove layer: ${item.before?.name || "(unnamed)"}${parentLayer}${groupName}${characterName}`;
     }
   }
   

@@ -3,7 +3,7 @@ import { extension_settings } from "../../../../extensions.js";
 import { loadCharacterDetails, normalizeCharacterDetails } from "./character-details-store.js";
 import { setCharacterDetailsData } from "./character-details-panel.js";
 import { showCharacterDetailsDiff } from "./character-details-diff-modal.js";
-import { buildCharacterVisualDescription, shouldUsePlainTextClothingForLlm } from "./character-details-descriptions.js";
+import { buildCharacterVisualDescription } from "./character-details-descriptions.js";
 import { COMPACT_OUTFIT_ONLY_CHANGELOG_SHAPE, DEFAULT_DESCRIPTIONS_PROMPT } from "./character-details-prompts.js";
 
 const extensionName = "st-extension-example";
@@ -55,49 +55,6 @@ function isMessageVisibleToAi(message) {
   return true;
 }
 
-function getCurrentCharacterDescriptionSystemMessage(context) {
-  return '';
-  // const allCharacters = Array.isArray(context?.characters) ? context.characters : [];
-
-  // if (context?.groupId) {
-  //   const group = (Array.isArray(context?.groups) ? context.groups : [])
-  //     .find((item) => String(item?.id) === String(context.groupId));
-  //   const members = Array.isArray(group?.members) ? group.members : [];
-  //   if (!members.length) {
-  //     return "";
-  //   }
-
-  //   const lines = [];
-  //   for (const member of members) {
-  //     const match = allCharacters.find((item) => item?.avatar === member || item?.name === member);
-  //     const name = String(match?.name || "").trim();
-  //     const description = String(match?.description || "").trim();
-  //     if (!name || !description) {
-  //       continue;
-  //     }
-  //     lines.push(`- ${name}: ${description}`);
-  //   }
-
-  //   if (!lines.length) {
-  //     return "";
-  //   }
-
-  //   return `Character Description:\n${lines.join("\n")}`;
-  // }
-
-  // const characterIndex = Number(context?.characterId);
-  // const currentCharacter = Number.isInteger(characterIndex) && characterIndex >= 0
-  //   ? allCharacters[characterIndex]
-  //   : null;
-
-  // const currentDescription = String(currentCharacter?.description || "").trim();
-  // if (!currentDescription) {
-  //   return "";
-  // }
-
-  // return `Character Description:\n${currentDescription}`;
-}
-
 function getPersonaDescriptionSystemMessage(context) {
   const personaDescription = String(context?.powerUserSettings?.persona_description || "").trim();
   if (!personaDescription) {
@@ -109,11 +66,6 @@ function getPersonaDescriptionSystemMessage(context) {
 
 function buildChatCompletionContextMessages(context) {
   const messages = [];
-
-  const characterDescriptionMessage = getCurrentCharacterDescriptionSystemMessage(context);
-  if (characterDescriptionMessage) {
-    messages.push({ role: "system", content: characterDescriptionMessage });
-  }
 
   const personaDescriptionMessage = getPersonaDescriptionSystemMessage(context);
   if (personaDescriptionMessage) {
@@ -434,18 +386,18 @@ function buildOutfitGenerationInstruction(character, userRequest) {
   const requestText = sanitizeForbiddenText(userRequest || "");
 
   return [
-    "OUTFIT GENERATION MODE (DELTA OVER MAIN RULES):",
-    "- Follow all rules from the main prompt above exactly as-is.",
+    "OUTFIT GENERATION MODE:",
+    "- Follow all rules from the main prompt above exactly as-is, except for the following modifications for this run only:",
     "- This is only a scope override for current task, not a new rule set.",
     `- Target character is (${characterId})${characterName}.`,
     `- User outfit request: ${requestText}`,
-    "- In this run, update only costume data for this target character.",
-    "- You MAY creatively invent a fitting outfit and layers when needed to satisfy user request and context.",
+    "- In this run, ONLY create a new outfit for target character. `present` field is no longer mandatory, but `newOutfits` and `newLayers` fields with exactly one new outfit and as many layers as needed(minimum 1 layer) become mandatory.",
+    "- You HAVE TO creatively invent a fitting outfit and layers when needed to satisfy user request and context. Be sure to imagine also underlying layers that will match the outfit.",
     "- Keep strict logical layering and visibility semantics from the main prompt.",
     "- Output should contain only costume additions for this task: newOutfits and matching newLayers.",
     `- Expected single-line JSON shape example: ${COMPACT_OUTFIT_ONLY_CHANGELOG_SHAPE}`,
     "- Do not output unrelated updates in this mode (no character rename/presence/description changes).",
-    "- If no valid outfit can be added, output exactly: {}",
+    "- If no valid outfit can be added create outfit `Naked` with single layer `Nude`",
   ].join("\n");
 }
 
@@ -532,8 +484,9 @@ async function runCharacterDetailsGeneration(eventOrButton, options = {}) {
 
   try {
     const parsed = extractJsonFromResponse(String(response || ""), context);
-    const current = loadCharacterDetails(context);
-    const mergedData = applyChangelogToCharacterDetails(current, parsed);
+    const currentData = loadCharacterDetails(context);
+    const current = deepClone(currentData);
+    const mergedData = applyChangelogToCharacterDetails(currentData, parsed);
     const normalized = normalizeCharacterDetails(mergedData, context);
 
     if (generationToast) {
@@ -545,6 +498,7 @@ async function runCharacterDetailsGeneration(eventOrButton, options = {}) {
       toastr.success(successMessage, "Character Details");
     }, {
       ignoreGroupRemovals: true,
+      ignoreLayerRemovals: true,
     });
   } catch (error) {
     if (generationToast) {
@@ -1552,4 +1506,38 @@ async function runOutfitGenerationForCharacter(characterId, userRequest, eventOr
   });
 }
 
-export { runDescriptionsGeneration, runOutfitGenerationForCharacter };
+function buildCharacterGenerationInstruction(userRequest) {
+  const requestText = sanitizeForbiddenText(userRequest || "");
+
+  return [
+    "CHARACTER GENERATION MODE (DELTA OVER MAIN RULES):",
+    "- Follow all rules from the main prompt above exactly as-is.",
+    "- This is only a scope override for current task, not a new rule set.",
+    `- User character request: ${requestText}`,
+    "- In this run, ONLY add a single new character based on the user's request.",
+    "- You HAVE TO creatively invent character details (name, appearance, default outfit) to satisfy user request and context.",
+    "- Generated character name MUST fit the setting and tone of the current story; do not use descriptive placeholder labels like 'suspicious old man' as the character name.",
+    "- Try to use original and uncommon names.",
+    "- Output HAS TO contain a new character entry and following fields are MANDATORY for this run: newChars, newDescs, newOutfits, and matching newLayers.",
+    "- The character should start with presence set to true.",
+    "- Keep strict logical layering and visibility semantics from the main prompt.",
+    "- Do not output unrelated updates in this mode (no changes to existing characters).",
+  ].join("\n");
+}
+
+async function runCharacterGenerationWithAI(userRequest, eventOrButton) {
+  const requestText = String(userRequest || "").trim();
+  if (!requestText) {
+    toastr.warning("Provide character request first.", "Character Details");
+    return;
+  }
+
+  const extraInstruction = buildCharacterGenerationInstruction(requestText);
+  await runCharacterDetailsGeneration(eventOrButton, {
+    extraInstruction,
+    generatingMessage: "Generating character...",
+    successMessage: "Character changelog generated.",
+  });
+}
+
+export { runDescriptionsGeneration, runOutfitGenerationForCharacter, runCharacterGenerationWithAI };

@@ -25,6 +25,12 @@
     <div class="st-extension-left-panel__layout">
         <div id="character-details-mods-panel" class="character-mods-panel"></div>
         <div class="st-extension-left-panel__footer">
+            <div id="character-details-mods-position-filter" class="mods-position-filter" role="group" aria-label="Filter mods by position">
+                <button class="menu_button mods-position-filter__button is-active" type="button" data-mods-filter="all" title="Show all mods" aria-pressed="true">All</button>
+                <button class="menu_button mods-position-filter__button" type="button" data-mods-filter="start" title="Show only start-position mods" aria-pressed="false">Start</button>
+                <button class="menu_button mods-position-filter__button" type="button" data-mods-filter="middle" title="Show only after-chars mods" aria-pressed="false">After chars</button>
+                <button class="menu_button mods-position-filter__button" type="button" data-mods-filter="end" title="Show only end-position mods" aria-pressed="false">End</button>
+            </div>
             <button id="character-details-mods-add" class="menu_button character-details-footer__icon-button" type="button" title="Add mod">
                 <i class="fa-solid fa-plus"></i>
             </button>
