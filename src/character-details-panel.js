@@ -4147,17 +4147,31 @@ async function showModItemEditorPopup({
   okButton,
   shortnameValue = "",
   detailsValue = "",
+  includeGroupName = false,
+  initialGroupName = "",
   includeModSettings = true,
   initialCharacterMod = false,
   initialLocalState = false,
 } = {}) {
+  let nextGroupName = String(initialGroupName || "").trim();
   let nextShortname = String(shortnameValue || "").trim();
   let nextDetails = String(detailsValue || "").replace(/\r\n?/g, "\n").trim();
   let nextCharacterMod = initialCharacterMod === true;
   let nextLocalState = initialLocalState === true;
 
   while (true) {
-    const customInputs = [
+    const customInputs = [];
+
+    if (includeGroupName) {
+      customInputs.push({
+        id: "st_extension_mod_group_name",
+        label: "Group name",
+        type: "text",
+        defaultState: nextGroupName,
+      });
+    }
+
+    customInputs.push(
       {
         id: "st_extension_mod_shortname",
         label: "Shortname",
@@ -4171,7 +4185,7 @@ async function showModItemEditorPopup({
         rows: 8,
         defaultState: nextDetails,
       },
-    ];
+    );
 
     if (includeModSettings) {
       customInputs.push(
@@ -4207,6 +4221,9 @@ async function showModItemEditorPopup({
       return null;
     }
 
+    const groupNameInput = includeGroupName
+      ? normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_group_name"))
+      : "";
     const shortnameInput = normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_shortname"));
     const detailsInput = String(popup.inputResults?.get("st_extension_mod_details") || "")
       .replace(/\r\n?/g, "\n")
@@ -4218,8 +4235,18 @@ async function showModItemEditorPopup({
       ? Boolean(popup.inputResults?.get("st_extension_mod_local_state"))
       : false;
 
+    if (includeGroupName && !groupNameInput) {
+      toastr.warning("Group name is required.", "Character Details");
+      nextShortname = shortnameInput;
+      nextDetails = detailsInput;
+      nextCharacterMod = characterModInput;
+      nextLocalState = localStateInput;
+      continue;
+    }
+
     if (!shortnameInput) {
       toastr.warning("Shortname is required.", "Character Details");
+      nextGroupName = groupNameInput;
       nextDetails = detailsInput;
       nextCharacterMod = characterModInput;
       nextLocalState = localStateInput;
@@ -4227,6 +4254,7 @@ async function showModItemEditorPopup({
     }
 
     return {
+      groupName: groupNameInput,
       shortname: shortnameInput,
       fullContent: detailsInput,
       characterMod: characterModInput,
@@ -4499,12 +4527,16 @@ async function handleModEntryEdit(actionOwner) {
   const mod = mods[index];
   const previousStateScope = mod.stateScope;
   const effectiveModBeforeEdit = getModsSettings().find((item) => item.id === modId) || mod;
-  const editingGroupItem = isModGroup(mod) ? getSelectedModItem(mod) : null;
+  const editingGroupItem = isModGroup(effectiveModBeforeEdit)
+    ? getSelectedModItem(effectiveModBeforeEdit)
+    : null;
   const edited = await showModItemEditorPopup({
     title: isModGroup(mod) ? "Edit selected group mod" : "Edit mod",
     okButton: "Save",
     shortnameValue: isModGroup(mod) ? editingGroupItem?.shortname : mod.shortname,
     detailsValue: isModGroup(mod) ? editingGroupItem?.fullContent : mod.fullContent,
+    includeGroupName: isModGroup(mod),
+    initialGroupName: isModGroup(mod) ? mod.groupName : "",
     includeModSettings: true,
     initialCharacterMod: Boolean(normalizeModCharacterCardId(mod.characterId)),
     initialLocalState: mod.stateScope === MOD_STATE_SCOPE_LOCAL,
@@ -4518,6 +4550,8 @@ async function handleModEntryEdit(actionOwner) {
     if (!editingGroupItem) {
       return;
     }
+
+    mod.groupName = deriveModGroupName(edited.groupName);
 
     mod.items = (Array.isArray(mod.items) ? mod.items : []).map((item) => {
       if (item.id !== editingGroupItem.id) {
@@ -4584,7 +4618,8 @@ async function handleModDelete(actionOwner) {
     return;
   }
 
-  const selectedItem = getSelectedModItem(mod);
+  const effectiveMod = getModsSettings().find((item) => item.id === modId) || mod;
+  const selectedItem = isModGroup(effectiveMod) ? getSelectedModItem(effectiveMod) : null;
   if (!selectedItem) {
     return;
   }
@@ -4620,6 +4655,9 @@ async function handleModDelete(actionOwner) {
   }
 
   const selectedIndex = mod.items.findIndex((item) => item.id === selectedItem.id);
+  if (selectedIndex === -1) {
+    return;
+  }
   mod.items.splice(selectedIndex, 1);
   const nextSelection = mod.items[Math.min(selectedIndex, mod.items.length - 1)] || mod.items[0];
   mod.selectedItemId = nextSelection?.id || "";
