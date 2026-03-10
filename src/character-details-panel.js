@@ -55,13 +55,19 @@ const FORBIDDEN_NAME_CHARS = /[\[\]\/|]/g;
 const MOBILE_DRAWER_MEDIA_QUERY = "(max-width: 1000px)";
 const MOD_SHORTNAME_MAX_LENGTH = 50;
 const MOD_POSITION_START = "start";
+const MOD_POSITION_AFTER_CHAR = "after-char";
 const MOD_POSITION_MIDDLE = "middle";
 const MOD_POSITION_END = "end";
 const MOD_ENTRY_TYPE_SINGLE = "single";
 const MOD_ENTRY_TYPE_GROUP = "group";
 const MODS_PANEL_FILTER_ALL = "all";
+const MOD_STATE_SCOPE_GLOBAL = "global";
+const MOD_STATE_SCOPE_LOCAL = "local";
+const MODS_LOCAL_STATE_STORAGE_KEY = "characterDetailsModsLocalState";
+const PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID = "character-details-remove-newlines";
 const MOD_POSITION_DEFINITIONS = [
   { key: MOD_POSITION_START, label: "Beginning", icon: "fa-hourglass-start" },
+  { key: MOD_POSITION_AFTER_CHAR, label: "After char X", icon: "fa-user-tag" },
   { key: MOD_POSITION_MIDDLE, label: "After chars", icon: "fa-person-circle-plus" },
   { key: MOD_POSITION_END, label: "End", icon: "fa-hourglass-end" },
 ];
@@ -98,6 +104,50 @@ function shouldShowModsPanel() {
   return extension_settings?.[extensionName]?.show_mods_panel === true;
 }
 
+function shouldRemoveImagePromptNewlines() {
+  return extension_settings?.[extensionName]?.remove_image_prompt_newlines !== false;
+}
+
+function setRemoveImagePromptNewlines(nextValue) {
+  extension_settings[extensionName] = extension_settings[extensionName] || {};
+  const normalizedValue = Boolean(nextValue);
+  extension_settings[extensionName].remove_image_prompt_newlines = normalizedValue;
+  $("#remove_image_prompt_newlines").prop("checked", normalizedValue);
+  saveSettingsDebounced();
+}
+
+function buildPromptPreviewPopupOptions(baseOptions = {}) {
+  const currentRemoveNewlines = shouldRemoveImagePromptNewlines();
+  const baseCustomInputs = Array.isArray(baseOptions.customInputs) ? baseOptions.customInputs : [];
+  const baseOnClose = baseOptions.onClose;
+
+  return {
+    ...baseOptions,
+    customInputs: [
+      ...baseCustomInputs,
+      {
+        id: PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID,
+        label: "Remove newlines",
+        type: "checkbox",
+        defaultState: currentRemoveNewlines,
+      },
+    ],
+    onClose: async (popup) => {
+      const removeNewlinesValue = popup?.inputResults?.get(PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID);
+      if (removeNewlinesValue !== undefined) {
+        const normalizedValue = Boolean(removeNewlinesValue);
+        if (normalizedValue !== shouldRemoveImagePromptNewlines()) {
+          setRemoveImagePromptNewlines(normalizedValue);
+        }
+      }
+
+      if (typeof baseOnClose === "function") {
+        await baseOnClose(popup);
+      }
+    },
+  };
+}
+
 function createDefaultModImageTypes() {
   return {
     portrait: true,
@@ -110,7 +160,7 @@ function createDefaultModImageTypes() {
 }
 
 function normalizeModPosition(value) {
-  if (value === MOD_POSITION_START || value === MOD_POSITION_END) {
+  if (value === MOD_POSITION_START || value === MOD_POSITION_AFTER_CHAR || value === MOD_POSITION_END) {
     return value;
   }
 
@@ -119,7 +169,12 @@ function normalizeModPosition(value) {
 
 function normalizeModsPanelPositionFilter(value) {
   const normalized = normalizeModPosition(value);
-  if (value === MOD_POSITION_START || value === MOD_POSITION_MIDDLE || value === MOD_POSITION_END) {
+  if (
+    value === MOD_POSITION_START
+    || value === MOD_POSITION_AFTER_CHAR
+    || value === MOD_POSITION_MIDDLE
+    || value === MOD_POSITION_END
+  ) {
     return normalized;
   }
 
@@ -128,7 +183,9 @@ function normalizeModsPanelPositionFilter(value) {
 
 function getModPositionDefinition(value) {
   const normalized = normalizeModPosition(value);
-  return MOD_POSITION_DEFINITIONS.find((definition) => definition.key === normalized) || MOD_POSITION_DEFINITIONS[1];
+  return MOD_POSITION_DEFINITIONS.find((definition) => definition.key === normalized)
+    || MOD_POSITION_DEFINITIONS.find((definition) => definition.key === MOD_POSITION_MIDDLE)
+    || MOD_POSITION_DEFINITIONS[0];
 }
 
 function getModsPanelFilterLabel(value) {
@@ -153,6 +210,225 @@ function normalizeModImageTypes(value) {
   }
 
   return normalized;
+}
+
+function normalizeModStateScope(value) {
+  return String(value || "").trim() === MOD_STATE_SCOPE_LOCAL
+    ? MOD_STATE_SCOPE_LOCAL
+    : MOD_STATE_SCOPE_GLOBAL;
+}
+
+function normalizeModCharacterCardId(value) {
+  return String(value || "").trim();
+}
+
+function normalizeModAfterCharName(value) {
+  return String(value || "").trim();
+}
+
+function createDefaultModsLocalState() {
+  return {
+    enabledByModId: {},
+    selectedItemByGroupModId: {},
+  };
+}
+
+function readModsLocalState(context) {
+  const sourceContext = context || getContext();
+  const raw = sourceContext?.variables?.local?.get?.(MODS_LOCAL_STATE_STORAGE_KEY);
+  if (!raw) {
+    return createDefaultModsLocalState();
+  }
+
+  let parsed = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return createDefaultModsLocalState();
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return createDefaultModsLocalState();
+  }
+
+  const enabledByModId = {};
+  const selectedItemByGroupModId = {};
+
+  for (const [modId, value] of Object.entries(parsed.enabledByModId || {})) {
+    const normalizedModId = String(modId || "").trim();
+    if (!normalizedModId) {
+      continue;
+    }
+
+    enabledByModId[normalizedModId] = value === true;
+  }
+
+  for (const [modId, value] of Object.entries(parsed.selectedItemByGroupModId || {})) {
+    const normalizedModId = String(modId || "").trim();
+    const normalizedItemId = String(value || "").trim();
+    if (!normalizedModId || !normalizedItemId) {
+      continue;
+    }
+
+    selectedItemByGroupModId[normalizedModId] = normalizedItemId;
+  }
+
+  return {
+    enabledByModId,
+    selectedItemByGroupModId,
+  };
+}
+
+function writeModsLocalState(context, stateValue) {
+  const sourceContext = context || getContext();
+  const nextState = stateValue && typeof stateValue === "object"
+    ? stateValue
+    : createDefaultModsLocalState();
+
+  sourceContext?.variables?.local?.set?.(MODS_LOCAL_STATE_STORAGE_KEY, nextState);
+}
+
+function getCurrentChatCharacterCardId(context = null) {
+  const sourceContext = context || getContext();
+  const chatCharacterId = sourceContext?.characterId;
+  if (chatCharacterId === null || chatCharacterId === undefined) {
+    return "";
+  }
+
+  return String(chatCharacterId).trim();
+}
+
+function isCharacterModVisibleInCurrentChat(mod, context = null) {
+  const boundCharacterId = normalizeModCharacterCardId(mod?.characterId);
+  if (!boundCharacterId) {
+    return true;
+  }
+
+  const currentCharacterId = getCurrentChatCharacterCardId(context);
+  return Boolean(currentCharacterId && boundCharacterId === currentCharacterId);
+}
+
+function cleanupModsLocalState(context, mods) {
+  const sourceContext = context || getContext();
+  const localState = readModsLocalState(sourceContext);
+  const normalizedMods = Array.isArray(mods) ? mods : [];
+  const localMods = normalizedMods.filter((mod) => mod?.stateScope === MOD_STATE_SCOPE_LOCAL);
+  const localModIds = new Set(localMods.map((mod) => String(mod?.id || "").trim()).filter(Boolean));
+  let changed = false;
+
+  for (const modId of Object.keys(localState.enabledByModId)) {
+    if (!localModIds.has(modId)) {
+      delete localState.enabledByModId[modId];
+      changed = true;
+    }
+  }
+
+  for (const modId of Object.keys(localState.selectedItemByGroupModId)) {
+    if (!localModIds.has(modId)) {
+      delete localState.selectedItemByGroupModId[modId];
+      changed = true;
+    }
+  }
+
+  for (const mod of localMods) {
+    if (!isModGroup(mod)) {
+      continue;
+    }
+
+    const modId = String(mod.id || "").trim();
+    if (!modId) {
+      continue;
+    }
+
+    const items = Array.isArray(mod.items) ? mod.items : [];
+    const firstItemId = String(items[0]?.id || "").trim();
+    if (!firstItemId) {
+      if (localState.selectedItemByGroupModId[modId]) {
+        delete localState.selectedItemByGroupModId[modId];
+        changed = true;
+      }
+      continue;
+    }
+
+    const selectedItemId = String(localState.selectedItemByGroupModId[modId] || "").trim();
+    const exists = items.some((item) => String(item?.id || "").trim() === selectedItemId);
+    if (!selectedItemId || !exists) {
+      localState.selectedItemByGroupModId[modId] = firstItemId;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    writeModsLocalState(sourceContext, localState);
+  }
+
+  return localState;
+}
+
+function applyLocalModsState(mods, localState) {
+  const normalizedMods = Array.isArray(mods) ? mods : [];
+  const stateValue = localState && typeof localState === "object"
+    ? localState
+    : createDefaultModsLocalState();
+
+  return normalizedMods.map((mod) => {
+    if (!mod || mod.stateScope !== MOD_STATE_SCOPE_LOCAL) {
+      return mod;
+    }
+
+    const modId = String(mod.id || "").trim();
+    const effective = { ...mod };
+
+    // Local scope reads enabled state only from chat-local storage.
+    // Missing local entry means disabled by default.
+    if (Object.prototype.hasOwnProperty.call(stateValue.enabledByModId, modId)) {
+      effective.enabled = stateValue.enabledByModId[modId] === true;
+    } else {
+      effective.enabled = false;
+    }
+
+    if (isModGroup(effective) && Object.prototype.hasOwnProperty.call(stateValue.selectedItemByGroupModId, modId)) {
+      const selectedItemId = String(stateValue.selectedItemByGroupModId[modId] || "").trim();
+      const itemExists = Array.isArray(effective.items)
+        ? effective.items.some((item) => String(item?.id || "").trim() === selectedItemId)
+        : false;
+      if (selectedItemId && itemExists) {
+        effective.selectedItemId = selectedItemId;
+      }
+    }
+
+    return effective;
+  });
+}
+
+function seedCurrentChatLocalStateFromMod(mods, mod, effectiveMod = null) {
+  const modId = String(mod?.id || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const sourceMod = effectiveMod && typeof effectiveMod === "object"
+    ? effectiveMod
+    : mod;
+  const context = getContext();
+  const localState = cleanupModsLocalState(context, mods);
+
+  localState.enabledByModId[modId] = sourceMod?.enabled === true;
+
+  if (isModGroup(mod)) {
+    const selectedItemId = String(sourceMod?.selectedItemId || mod?.selectedItemId || "").trim();
+    const itemExists = Array.isArray(mod?.items)
+      ? mod.items.some((item) => String(item?.id || "").trim() === selectedItemId)
+      : false;
+
+    if (selectedItemId && itemExists) {
+      localState.selectedItemByGroupModId[modId] = selectedItemId;
+    }
+  }
+
+  writeModsLocalState(context, localState);
 }
 
 function compactWhitespace(value) {
@@ -278,6 +554,9 @@ function normalizeModEntry(mod) {
     enabled: mod?.enabled !== false,
     position: normalizeModPosition(mod?.position),
     imageTypes: normalizeModImageTypes(mod?.imageTypes),
+    stateScope: normalizeModStateScope(mod?.stateScope),
+    characterId: normalizeModCharacterCardId(mod?.characterId),
+    afterCharName: normalizeModAfterCharName(mod?.afterCharName),
   };
 
   const type = String(mod?.type || "").trim().toLowerCase();
@@ -297,15 +576,25 @@ function getModsSettingsRaw() {
   return extension_settings[extensionName].mods;
 }
 
-function getModsSettings() {
+function getNormalizedModsSettings() {
   return getModsSettingsRaw().map((mod) => normalizeModEntry(mod));
+}
+
+function getModsSettings(context = null) {
+  const sourceContext = context || getContext();
+  const mods = getNormalizedModsSettings();
+  const localState = cleanupModsLocalState(sourceContext, mods);
+  return applyLocalModsState(mods, localState);
 }
 
 function saveModsSettings(nextMods, options = {}) {
   const rerender = options.rerender !== false;
   extension_settings[extensionName] = extension_settings[extensionName] || {};
-  extension_settings[extensionName].mods = (Array.isArray(nextMods) ? nextMods : []).map((mod) => normalizeModEntry(mod));
+  const normalizedMods = (Array.isArray(nextMods) ? nextMods : []).map((mod) => normalizeModEntry(mod));
+  extension_settings[extensionName].mods = normalizedMods;
+  cleanupModsLocalState(getContext(), normalizedMods);
   saveSettingsDebounced();
+  renderLeftDrawerState();
 
   if (rerender) {
     renderModsPanel();
@@ -324,7 +613,78 @@ function getModImageTypeForGenerationMode(mode) {
   return null;
 }
 
-function buildModsPromptForPosition(position, imageType) {
+function getVisibleModsForCurrentChat(mods, context = null) {
+  const sourceContext = context || getContext();
+  return (Array.isArray(mods) ? mods : []).filter((mod) => isCharacterModVisibleInCurrentChat(mod, sourceContext));
+}
+
+function normalizeInlineModSegment(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[\s,.]+$/g, "")
+    .trim();
+}
+
+function findCharacterByName(data, nameValue) {
+  const normalized = normalizeName(nameValue);
+  if (!normalized) {
+    return null;
+  }
+
+  return (Array.isArray(data?.characters) ? data.characters : [])
+    .find((character) => normalizeName(character?.name) === normalized) || null;
+}
+
+function buildAfterCharModsByCharacterId(data, imageType, context = null) {
+  if (!imageType) {
+    return new Map();
+  }
+
+  const sourceContext = context || getContext();
+  const result = new Map();
+  const visibleMods = getVisibleModsForCurrentChat(getModsSettings(sourceContext), sourceContext);
+
+  for (const mod of visibleMods) {
+    if (!mod?.enabled) {
+      continue;
+    }
+
+    if (normalizeModPosition(mod.position) !== MOD_POSITION_AFTER_CHAR) {
+      continue;
+    }
+
+    if (mod.imageTypes?.[imageType] === false) {
+      continue;
+    }
+
+    const targetCharacter = findCharacterByName(data, mod.afterCharName);
+    if (!targetCharacter?.id) {
+      continue;
+    }
+
+    const inlineSegment = normalizeInlineModSegment(getModPromptContent(mod));
+    if (!inlineSegment) {
+      continue;
+    }
+
+    const key = String(targetCharacter.id || "").trim();
+    if (!key) {
+      continue;
+    }
+
+    if (!result.has(key)) {
+      result.set(key, []);
+    }
+
+    result.get(key).push(inlineSegment);
+  }
+
+  return result;
+}
+
+function buildModsPromptForPosition(position, imageType, context = null) {
   if (!imageType) {
     return "";
   }
@@ -338,16 +698,18 @@ function buildModsPromptForPosition(position, imageType) {
     return /,\s*$/.test(text) ? text : `${text},`;
   };
 
-  const mods = getModsSettings();
+  const sourceContext = context || getContext();
+  const mods = getVisibleModsForCurrentChat(getModsSettings(sourceContext), sourceContext);
   const matchingMods = mods
     .filter((mod) => mod.enabled)
     .filter((mod) => mod.position === position)
     .filter((mod) => mod.imageTypes?.[imageType] !== false)
     .map((mod) => getModPromptContent(mod))
+    .map((modText) => normalizeInlineModSegment(modText))
     .map((modText) => ensureTrailingComma(modText))
     .filter(Boolean);
 
-  return matchingMods.join("\n\n");
+  return matchingMods.join(" ");
 }
 
 function shouldAutoAddPersonaCharacter() {
@@ -528,6 +890,24 @@ function initializeMobileDrawer() {
   renderMobileDrawerState();
 }
 
+function isModActiveForCurrentChat(mod) {
+  if (!mod?.enabled) {
+    return false;
+  }
+
+  if (normalizeModPosition(mod.position) === MOD_POSITION_AFTER_CHAR) {
+    return Boolean(findCharacterByName(state || {}, mod.afterCharName));
+  }
+
+  return true;
+}
+
+function getActiveModsCountForCurrentChat() {
+  const context = getContext();
+  const mods = getVisibleModsForCurrentChat(getModsSettings(context), context);
+  return mods.filter((mod) => isModActiveForCurrentChat(mod)).length;
+}
+
 function renderLeftDrawerState() {
   if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
     return;
@@ -538,11 +918,30 @@ function renderLeftDrawerState() {
   modsPanelContainerRoot.toggleClass("is-desktop-collapsed", !mobileMode && !mobileDrawerLeftOpen);
 
   mobileDrawerLeftToggleButton.toggleClass("is-open", mobileDrawerLeftOpen);
+  const activeModsCount = getActiveModsCountForCurrentChat();
+  const showActiveGlow = !mobileDrawerLeftOpen && activeModsCount > 0;
+  mobileDrawerLeftToggleButton.toggleClass("has-active-mods", showActiveGlow);
+
+  let badge = mobileDrawerLeftToggleButton.find(".st-extension-mobile-drawer-left-toggle__count");
+  if (!badge.length) {
+    mobileDrawerLeftToggleButton.append('<span class="st-extension-mobile-drawer-left-toggle__count displayNone"></span>');
+    badge = mobileDrawerLeftToggleButton.find(".st-extension-mobile-drawer-left-toggle__count");
+  }
+
+  badge.text(String(activeModsCount));
+  badge.toggleClass("displayNone", !(showActiveGlow && activeModsCount > 0));
 
   const icon = mobileDrawerLeftToggleButton.find("i");
-  icon.removeClass("fa-angle-left fa-angle-right").addClass(mobileDrawerLeftOpen ? "fa-angle-left" : "fa-angle-right");
+  icon
+    .removeClass("fa-angle-left fa-angle-right fa-gear fa-gears")
+    .addClass(mobileDrawerLeftOpen ? "fa-angle-left" : (activeModsCount > 0 ? "fa-gears" : "fa-gear"));
 
-  mobileDrawerLeftToggleButton.attr("title", mobileDrawerLeftOpen ? "Hide mods panel" : "Show mods panel");
+  mobileDrawerLeftToggleButton.attr(
+    "title",
+    mobileDrawerLeftOpen
+      ? "Hide mods panel"
+      : (activeModsCount > 0 ? `Show mods panel (${activeModsCount} active mods)` : "Show mods panel"),
+  );
 }
 
 function initializeLeftMobileDrawer() {
@@ -632,9 +1031,20 @@ function getPresentCharacters(data, options = {}) {
     .filter((character) => !excludeId || character.id !== excludeId);
 }
 
-function buildCharactersVisualDescriptions(data, characters) {
+function buildCharactersVisualDescriptions(data, characters, options = {}) {
+  const extraByCharacterId = options.extraByCharacterId instanceof Map
+    ? options.extraByCharacterId
+    : new Map();
+
   return (Array.isArray(characters) ? characters : [])
-    .map((character) => buildCharacterVisualDescription(data, character.id))
+    .map((character) => {
+      const characterId = String(character?.id || "").trim();
+      const additionalWearingItems = characterId && extraByCharacterId.has(characterId)
+        ? extraByCharacterId.get(characterId)
+        : [];
+
+      return buildCharacterVisualDescription(data, character.id, { additionalWearingItems });
+    })
     .filter(Boolean)
     .join("\n\n");
 }
@@ -742,6 +1152,20 @@ function compactPromptToSingleLine(text) {
     .replace(/\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function formatPromptForImageGenerator(text) {
+  const normalized = String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return shouldRemoveImagePromptNewlines()
+    ? compactPromptToSingleLine(normalized)
+    : normalized;
 }
 
 function escapeRegExpLiteral(value) {
@@ -859,6 +1283,8 @@ async function generateCharacterImage(mode, triggerButton = null) {
   const viewerCharacter = data.viewerCharacterId
     ? (data.characters || []).find((character) => character.id === data.viewerCharacterId) || null
     : null;
+  const imageType = getModImageTypeForGenerationMode(mode);
+  const afterCharModsByCharacterId = buildAfterCharModsByCharacterId(data, imageType, context);
 
   let characterDescription = "";
   let charactersPresentLine = "";
@@ -872,7 +1298,9 @@ async function generateCharacterImage(mode, triggerButton = null) {
       return;
     }
 
-    characterDescription = buildCharacterVisualDescription(data, activeCharacter.id);
+    characterDescription = buildCharacterVisualDescription(data, activeCharacter.id, {
+      additionalWearingItems: afterCharModsByCharacterId.get(String(activeCharacter.id || "").trim()) || [],
+    });
     if (!characterDescription) {
       toastr.warning("No active character description to generate image from.", "Character Details");
       clearActiveImageGeneration(button);
@@ -903,7 +1331,9 @@ async function generateCharacterImage(mode, triggerButton = null) {
 
     const presentWithoutViewer = getPresentCharacters(data, { excludeId: viewerCharacter.id });
     charactersPresentLine = buildCharactersPresentLine(presentWithoutViewer);
-    characterDescription = buildCharactersVisualDescriptions(data, presentWithoutViewer);
+    characterDescription = buildCharactersVisualDescriptions(data, presentWithoutViewer, {
+      extraByCharacterId: afterCharModsByCharacterId,
+    });
     scenePrompt = String(extension_settings?.[extensionName]?.describe_viewer_eyes_prompt || "").trim();
     modeLine = `Viewpoint is from viewer's eyes. Viewer name is ${viewerCharacter.name || "viewer"}, but always call this person \"viewer\".`;
   }
@@ -911,7 +1341,9 @@ async function generateCharacterImage(mode, triggerButton = null) {
   if (mode === "scene") {
     const presentAll = getPresentCharacters(data);
     charactersPresentLine = buildCharactersPresentLine(presentAll);
-    characterDescription = buildCharactersVisualDescriptions(data, presentAll);
+    characterDescription = buildCharactersVisualDescriptions(data, presentAll, {
+      extraByCharacterId: afterCharModsByCharacterId,
+    });
     scenePrompt = String(extension_settings?.[extensionName]?.describe_current_scene_prompt || "").trim();
     modeLine = "You are writing a CURRENT SCENE prompt for image generation.";
   }
@@ -971,10 +1403,9 @@ async function generateCharacterImage(mode, triggerButton = null) {
       promptToast = null;
     }
 
-    const imageType = getModImageTypeForGenerationMode(mode);
-    const modsStart = buildModsPromptForPosition(MOD_POSITION_START, imageType);
-    const modsMiddle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType);
-    const modsEnd = buildModsPromptForPosition(MOD_POSITION_END, imageType);
+    const modsStart = buildModsPromptForPosition(MOD_POSITION_START, imageType, context);
+    const modsMiddle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType, context);
+    const modsEnd = buildModsPromptForPosition(MOD_POSITION_END, imageType, context);
 
     let finalTrigger = [modsStart, characterDescription, modsMiddle, String(llmVisual || "").trim(), modsEnd]
       .filter(Boolean)
@@ -992,7 +1423,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
         'Preview and optionally edit the final image prompt. Press "Cancel" to abort generation.',
         POPUP_TYPE.INPUT,
         finalTrigger,
-        { rows: 12, okButton: "Generate", cancelButton: "Cancel" },
+        buildPromptPreviewPopupOptions({ rows: 12, okButton: "Generate", cancelButton: "Cancel" }),
       );
 
       if (editedPrompt === null || editedPrompt === undefined || editedPrompt === false) {
@@ -1011,15 +1442,15 @@ async function generateCharacterImage(mode, triggerButton = null) {
       throw new Error("Empty image trigger");
     }
 
-    const finalTriggerSingleLine = compactPromptToSingleLine(finalTrigger);
-    if (!finalTriggerSingleLine) {
+    const finalTriggerForGenerator = formatPromptForImageGenerator(finalTrigger);
+    if (!finalTriggerForGenerator) {
       throw new Error("Empty image trigger");
     }
 
     const customResolution = getCustomResolutionForMode(mode);
     const sdCommand = customResolution
-      ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerSingleLine}`
-      : `/sd ${finalTriggerSingleLine}`;
+      ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerForGenerator}`
+      : `/sd ${finalTriggerForGenerator}`;
 
     if (context.executeSlashCommandsWithOptions) {
       await context.executeSlashCommandsWithOptions(sdCommand);
@@ -1057,11 +1488,14 @@ async function generateFreeImage() {
 
   const data = loadCharacterDetails(context);
   const presentAll = getPresentCharacters(data);
-  const characterDescription = buildCharactersVisualDescriptions(data, presentAll);
   const imageType = getModImageTypeForGenerationMode("free");
-  const modsStart = buildModsPromptForPosition(MOD_POSITION_START, imageType);
-  const modsMiddle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType);
-  const modsEnd = buildModsPromptForPosition(MOD_POSITION_END, imageType);
+  const afterCharModsByCharacterId = buildAfterCharModsByCharacterId(data, imageType, context);
+  const characterDescription = buildCharactersVisualDescriptions(data, presentAll, {
+    extraByCharacterId: afterCharModsByCharacterId,
+  });
+  const modsStart = buildModsPromptForPosition(MOD_POSITION_START, imageType, context);
+  const modsMiddle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType, context);
+  const modsEnd = buildModsPromptForPosition(MOD_POSITION_END, imageType, context);
   let finalTrigger = [modsStart, characterDescription, modsMiddle, modsEnd]
     .filter(Boolean)
     .join("\n\n")
@@ -1077,7 +1511,7 @@ async function generateFreeImage() {
     'Write your image prompt. Press "Cancel" to abort generation.',
     POPUP_TYPE.INPUT,
     finalTrigger,
-    { rows: 12, okButton: "Generate", cancelButton: "Cancel" },
+    buildPromptPreviewPopupOptions({ rows: 12, okButton: "Generate", cancelButton: "Cancel" }),
   );
 
   if (editedPrompt === null || editedPrompt === undefined || editedPrompt === false) {
@@ -1096,16 +1530,16 @@ async function generateFreeImage() {
     return;
   }
 
-  const finalTriggerSingleLine = compactPromptToSingleLine(finalTrigger);
-  if (!finalTriggerSingleLine) {
+  const finalTriggerForGenerator = formatPromptForImageGenerator(finalTrigger);
+  if (!finalTriggerForGenerator) {
     toastr.warning("Prompt is empty.", "Character Details");
     return;
   }
 
   const customResolution = getCustomResolutionForMode("scene");
   const sdCommand = customResolution
-    ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerSingleLine}`
-    : `/sd ${finalTriggerSingleLine}`;
+    ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerForGenerator}`
+    : `/sd ${finalTriggerForGenerator}`;
 
   try {
     if (context.executeSlashCommandsWithOptions) {
@@ -3345,7 +3779,8 @@ function renderModsPanel() {
     return;
   }
 
-  const mods = getModsSettings();
+  const context = getContext();
+  const mods = getVisibleModsForCurrentChat(getModsSettings(context), context);
   if (!mods.length) {
     modsPanelRoot.html('<div class="character-mods-panel__empty">No mods yet. Use + to add one.</div>');
     return;
@@ -3390,6 +3825,10 @@ function renderModsPanel() {
     const position = normalizeModPosition(mod.position);
     const positionDefinition = getModPositionDefinition(position);
     const positionPopupOpen = openModPositionForId === mod.id;
+    const stateScopeLabel = mod.stateScope === MOD_STATE_SCOPE_LOCAL ? "local" : "global";
+    const afterCharName = normalizeModAfterCharName(mod.afterCharName);
+    const afterCharMatch = findCharacterByName(state, afterCharName);
+    const afterCharInvalid = position === MOD_POSITION_AFTER_CHAR && !afterCharMatch;
 
     const typeButtons = MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => {
       const typeEnabled = mod.imageTypes?.[definition.key] !== false;
@@ -3465,6 +3904,22 @@ function renderModsPanel() {
         >${escapeHtml(displayedShortname)}</div>
       `;
 
+    const primaryLabelControl = position === MOD_POSITION_AFTER_CHAR
+      ? `
+        <div class="mod-item__name-pair">
+          <input
+            class="text_pole mod-item__charname-input ${afterCharInvalid ? "is-invalid" : ""}"
+            type="text"
+            value="${escapeHtml(afterCharName)}"
+            data-field="mod-after-char-name"
+            data-mod-id="${escapeHtml(mod.id)}"
+            title="${afterCharInvalid ? "Character not found in this chat" : "Character name for after-char mod"}"
+          />
+          ${shortnameControl}
+        </div>
+      `
+      : shortnameControl;
+
     const secondaryActionButton = groupEntry
       ? `
         <button
@@ -3489,8 +3944,14 @@ function renderModsPanel() {
         </button>
       `;
 
+    const rowClass = [
+      "mod-item",
+      groupEntry ? "mod-item--group" : "",
+      mod.characterId ? "mod-item--character" : "",
+    ].filter(Boolean).join(" ");
+
     return `
-      <div class="mod-item ${groupEntry ? "mod-item--group" : ""}" data-mod-id="${escapeHtml(mod.id)}">
+      <div class="${rowClass}" data-mod-id="${escapeHtml(mod.id)}">
         <span class="mod-item__drag-handle" draggable="true" title="Drag to reorder">
           <i class="fa-solid fa-grip-vertical"></i>
         </span>
@@ -3499,7 +3960,7 @@ function renderModsPanel() {
           class="mod-item__led ${mod.enabled ? "is-enabled" : ""}"
           data-action="toggle-mod-enabled"
           data-mod-id="${escapeHtml(mod.id)}"
-          title="${mod.enabled ? "Disable mod" : "Enable mod"}"
+          title="${mod.enabled ? "Disable mod" : "Enable mod"} (${stateScopeLabel} state)"
         >
           <i class="fa-solid fa-circle"></i>
         </button>
@@ -3531,7 +3992,7 @@ function renderModsPanel() {
             ${positionOptions}
           </div>
         </div>
-        ${shortnameControl}
+        ${primaryLabelControl}
         <button
           type="button"
           class="mod-item__action"
@@ -3556,6 +4017,7 @@ function renderModsPanel() {
   }).join("");
 
   modsPanelRoot.html(html);
+  renderLeftDrawerState();
 }
 
 function clearModDragIndicators() {
@@ -3626,11 +4088,108 @@ function handleModsPositionFilterClick(event) {
   renderModsPanel();
 }
 
-async function showModItemEditorPopup({ title, okButton, shortnameValue = "", detailsValue = "" } = {}) {
+function getDefaultAfterCharName() {
+  const activeCharacter = getActiveCharacter(state || {});
+  return String(activeCharacter?.name || "").trim();
+}
+
+function resolveCharacterModAssignment(shouldBindToCharacter, existingCharacterId = "") {
+  if (!shouldBindToCharacter) {
+    return "";
+  }
+
+  const currentCharacterId = getCurrentChatCharacterCardId(getContext());
+  if (currentCharacterId) {
+    return currentCharacterId;
+  }
+
+  const fallbackCharacterId = normalizeModCharacterCardId(existingCharacterId);
+  if (fallbackCharacterId) {
+    return fallbackCharacterId;
+  }
+
+  toastr.warning("Character mod could not be assigned because there is no active character-card chat.", "Character Details");
+  return "";
+}
+
+function setLocalModEnabledState(modId, enabled) {
+  const context = getContext();
+  const localState = cleanupModsLocalState(context, getNormalizedModsSettings());
+  const normalizedModId = String(modId || "").trim();
+  if (!normalizedModId) {
+    return;
+  }
+
+  localState.enabledByModId[normalizedModId] = enabled === true;
+  writeModsLocalState(context, localState);
+}
+
+function setLocalGroupSelectedItem(modId, itemId) {
+  const context = getContext();
+  const localState = cleanupModsLocalState(context, getNormalizedModsSettings());
+  const normalizedModId = String(modId || "").trim();
+  const normalizedItemId = String(itemId || "").trim();
+  if (!normalizedModId) {
+    return;
+  }
+
+  if (normalizedItemId) {
+    localState.selectedItemByGroupModId[normalizedModId] = normalizedItemId;
+  } else {
+    delete localState.selectedItemByGroupModId[normalizedModId];
+  }
+
+  writeModsLocalState(context, localState);
+}
+
+async function showModItemEditorPopup({
+  title,
+  okButton,
+  shortnameValue = "",
+  detailsValue = "",
+  includeModSettings = true,
+  initialCharacterMod = false,
+  initialLocalState = false,
+} = {}) {
   let nextShortname = String(shortnameValue || "").trim();
   let nextDetails = String(detailsValue || "").replace(/\r\n?/g, "\n").trim();
+  let nextCharacterMod = initialCharacterMod === true;
+  let nextLocalState = initialLocalState === true;
 
   while (true) {
+    const customInputs = [
+      {
+        id: "st_extension_mod_shortname",
+        label: "Shortname",
+        type: "text",
+        defaultState: nextShortname,
+      },
+      {
+        id: "st_extension_mod_details",
+        label: "Details",
+        type: "textarea",
+        rows: 8,
+        defaultState: nextDetails,
+      },
+    ];
+
+    if (includeModSettings) {
+      customInputs.push(
+        {
+          id: "st_extension_mod_character_mod",
+          label: "Character mod (bind to current character-card chat)",
+          type: "checkbox",
+          defaultState: nextCharacterMod,
+        },
+        {
+          id: "st_extension_mod_local_state",
+          label: "Local state (unchecked = global state)",
+          type: "checkbox",
+          defaultState: nextLocalState,
+        },
+      );
+    }
+
     const popup = new Popup(
       `<h3>${escapeHtml(title || "Edit mod")}</h3>`,
       POPUP_TYPE.TEXT,
@@ -3639,21 +4198,7 @@ async function showModItemEditorPopup({ title, okButton, shortnameValue = "", de
         okButton: okButton || "Save",
         cancelButton: "Cancel",
         leftAlign: true,
-        customInputs: [
-          {
-            id: "st_extension_mod_shortname",
-            label: "Shortname",
-            type: "text",
-            defaultState: nextShortname,
-          },
-          {
-            id: "st_extension_mod_details",
-            label: "Details",
-            type: "textarea",
-            rows: 8,
-            defaultState: nextDetails,
-          },
-        ],
+        customInputs,
       },
     );
 
@@ -3666,16 +4211,26 @@ async function showModItemEditorPopup({ title, okButton, shortnameValue = "", de
     const detailsInput = String(popup.inputResults?.get("st_extension_mod_details") || "")
       .replace(/\r\n?/g, "\n")
       .trim();
+    const characterModInput = includeModSettings
+      ? Boolean(popup.inputResults?.get("st_extension_mod_character_mod"))
+      : false;
+    const localStateInput = includeModSettings
+      ? Boolean(popup.inputResults?.get("st_extension_mod_local_state"))
+      : false;
 
     if (!shortnameInput) {
       toastr.warning("Shortname is required.", "Character Details");
       nextDetails = detailsInput;
+      nextCharacterMod = characterModInput;
+      nextLocalState = localStateInput;
       continue;
     }
 
     return {
       shortname: shortnameInput,
       fullContent: detailsInput,
+      characterMod: characterModInput,
+      localState: localStateInput,
     };
   }
 }
@@ -3686,13 +4241,17 @@ async function handleAddMod() {
     okButton: "Add",
     shortnameValue: "",
     detailsValue: "",
+    includeModSettings: true,
+    initialCharacterMod: false,
+    initialLocalState: false,
   });
 
   if (!edited) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
+  const characterId = resolveCharacterModAssignment(edited.characterMod === true, "");
   mods.push({
     id: createModId(),
     type: MOD_ENTRY_TYPE_SINGLE,
@@ -3701,6 +4260,9 @@ async function handleAddMod() {
     shortname: edited.shortname,
     fullContent: edited.fullContent,
     imageTypes: createDefaultModImageTypes(),
+    stateScope: edited.localState ? MOD_STATE_SCOPE_LOCAL : MOD_STATE_SCOPE_GLOBAL,
+    characterId,
+    afterCharName: "",
   });
   saveModsSettings(mods);
 }
@@ -3711,13 +4273,22 @@ function handleModEnabledToggle(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1) {
     return;
   }
 
-  mods[index].enabled = !mods[index].enabled;
+  const mod = mods[index];
+  const effectiveMod = getModsSettings().find((item) => item.id === modId) || mod;
+  const nextEnabled = !Boolean(effectiveMod?.enabled);
+  if (mod.stateScope === MOD_STATE_SCOPE_LOCAL) {
+    setLocalModEnabledState(modId, nextEnabled);
+    renderModsPanel();
+    return;
+  }
+
+  mods[index].enabled = nextEnabled;
   saveModsSettings(mods);
 }
 
@@ -3764,7 +4335,7 @@ function handleModGroupItemSelect(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1 || !isModGroup(mods[index])) {
     return;
@@ -3772,6 +4343,13 @@ function handleModGroupItemSelect(actionOwner) {
 
   const items = Array.isArray(mods[index].items) ? mods[index].items : [];
   if (!items.some((item) => item.id === itemId)) {
+    return;
+  }
+
+  if (mods[index].stateScope === MOD_STATE_SCOPE_LOCAL) {
+    setLocalGroupSelectedItem(modId, itemId);
+    openModGroupForId = null;
+    renderModsPanel();
     return;
   }
 
@@ -3791,7 +4369,7 @@ function handleModImageTypeToggle(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1) {
     return;
@@ -3811,13 +4389,16 @@ function handleModPositionChange(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1) {
     return;
   }
 
   mods[index].position = nextPosition;
+  if (nextPosition === MOD_POSITION_AFTER_CHAR && !normalizeModAfterCharName(mods[index].afterCharName)) {
+    mods[index].afterCharName = getDefaultAfterCharName();
+  }
   openModPositionForId = null;
   saveModsSettings(mods);
 }
@@ -3828,7 +4409,7 @@ async function handleConvertModToGroup(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1 || isModGroup(mods[index])) {
     return;
@@ -3874,7 +4455,7 @@ async function handleAddModToGroup(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1 || !isModGroup(mods[index])) {
     return;
@@ -3885,6 +4466,7 @@ async function handleAddModToGroup(actionOwner) {
     okButton: "Add",
     shortnameValue: "",
     detailsValue: "",
+    includeModSettings: false,
   });
 
   if (!edited) {
@@ -3908,19 +4490,24 @@ async function handleModEntryEdit(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1) {
     return;
   }
 
   const mod = mods[index];
+  const previousStateScope = mod.stateScope;
+  const effectiveModBeforeEdit = getModsSettings().find((item) => item.id === modId) || mod;
   const editingGroupItem = isModGroup(mod) ? getSelectedModItem(mod) : null;
   const edited = await showModItemEditorPopup({
     title: isModGroup(mod) ? "Edit selected group mod" : "Edit mod",
     okButton: "Save",
     shortnameValue: isModGroup(mod) ? editingGroupItem?.shortname : mod.shortname,
     detailsValue: isModGroup(mod) ? editingGroupItem?.fullContent : mod.fullContent,
+    includeModSettings: true,
+    initialCharacterMod: Boolean(normalizeModCharacterCardId(mod.characterId)),
+    initialLocalState: mod.stateScope === MOD_STATE_SCOPE_LOCAL,
   });
 
   if (!edited) {
@@ -3948,6 +4535,14 @@ async function handleModEntryEdit(actionOwner) {
     mod.fullContent = edited.fullContent;
   }
 
+  mod.characterId = resolveCharacterModAssignment(edited.characterMod === true, mod.characterId);
+  mod.stateScope = edited.localState ? MOD_STATE_SCOPE_LOCAL : MOD_STATE_SCOPE_GLOBAL;
+
+  if (previousStateScope !== MOD_STATE_SCOPE_LOCAL && mod.stateScope === MOD_STATE_SCOPE_LOCAL) {
+    // One-time copy on conversion global -> local for current chat only.
+    seedCurrentChatLocalStateFromMod(mods, mod, effectiveModBeforeEdit);
+  }
+
   saveModsSettings(mods);
 }
 
@@ -3957,7 +4552,7 @@ async function handleModDelete(actionOwner) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const index = mods.findIndex((mod) => mod.id === modId);
   if (index === -1) {
     return;
@@ -4076,7 +4671,7 @@ function handleModDragOver(event) {
 
   event.preventDefault();
   const nativeEvent = event.originalEvent || event;
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const dropMode = resolveModDropMode(modItemElement, mods, draggedModId, nativeEvent);
   if (!dropMode) {
     return;
@@ -4108,7 +4703,7 @@ function handleModDrop(event) {
     return;
   }
 
-  const mods = getModsSettings();
+  const mods = getNormalizedModsSettings();
   const draggedIndex = mods.findIndex((mod) => mod.id === draggedId);
   const targetIndex = mods.findIndex((mod) => mod.id === targetId);
   if (draggedIndex === -1 || targetIndex === -1) {
@@ -4132,7 +4727,7 @@ function handleModDrop(event) {
         return;
       }
 
-      const nextMods = getModsSettings();
+      const nextMods = getNormalizedModsSettings();
       const nextDraggedIndex = nextMods.findIndex((mod) => mod.id === draggedId);
       const nextTargetIndex = nextMods.findIndex((mod) => mod.id === targetId);
       if (nextDraggedIndex === -1 || nextTargetIndex === -1) {
@@ -4269,6 +4864,31 @@ function handleModPanelChange(event) {
   if (action === "set-mod-position") {
     handleModPositionChange(actionOwner);
   }
+}
+
+function handleModPanelInput(event) {
+  const target = event.target;
+  if (!target || target.dataset?.field !== "mod-after-char-name") {
+    return;
+  }
+
+  const modId = String(target.dataset.modId || "").trim();
+  if (!modId) {
+    return;
+  }
+
+  const mods = getNormalizedModsSettings();
+  const index = mods.findIndex((mod) => mod.id === modId);
+  if (index === -1) {
+    return;
+  }
+
+  mods[index].afterCharName = normalizeModAfterCharName(target.value);
+  saveModsSettings(mods, { rerender: false });
+
+  const isValid = Boolean(findCharacterByName(state, mods[index].afterCharName));
+  target.classList.toggle("is-invalid", !isValid);
+  target.setAttribute("title", isValid ? "Character name for after-char mod" : "Character not found in this chat");
 }
 
 function handleModPanelOutsideClick(event) {
@@ -4863,6 +5483,7 @@ function bindEvents() {
   });
   modsPanelRoot.on("click", handleModPanelClick);
   modsPanelRoot.on("change", handleModPanelChange);
+  modsPanelRoot.on("input", handleModPanelInput);
   modsPanelRoot.on("dragstart", handleModDragStart);
   modsPanelRoot.on("dragover", handleModDragOver);
   modsPanelRoot.on("drop", handleModDrop);
@@ -4923,7 +5544,8 @@ function initCharacterDetailsPanel() {
     const nextContext = getContext();
     state = loadCharacterDetails(nextContext);
     extension_settings[extensionName] = extension_settings[extensionName] || {};
-    extension_settings[extensionName].mods = getModsSettings();
+    extension_settings[extensionName].mods = getNormalizedModsSettings();
+    cleanupModsLocalState(nextContext, extension_settings[extensionName].mods);
     ensureActiveCharacter(state);
     ensureActiveGroups(state);
     applyViewerFromPersona(state, nextContext);

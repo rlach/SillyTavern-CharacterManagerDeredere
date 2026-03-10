@@ -223,7 +223,18 @@ function normalizeImageDescriptionLine(line) {
   }
 
   text = text
-    .replace(/\.+/g, ",")
+    // Keep decimal dots intact (e.g. (keyword:1.5) weighted syntax for image generators).
+    .replace(/\.+/g, (dots, offset, source) => {
+      if (
+        dots === "."
+        && /\d/.test(String(source?.[offset - 1] || ""))
+        && /\d/.test(String(source?.[offset + 1] || ""))
+      ) {
+        return ".";
+      }
+
+      return ",";
+    })
     .replace(/,+/g, ",")
     .replace(/\s*,\s*/g, ", ")
     .replace(/\s+/g, " ")
@@ -343,10 +354,16 @@ function buildCharacterVisualDescription(data, characterId, options = {}) {
   const appearance = character.appearance?.trim();
   const includeInGenerationOnly = options.includeInGenerationOnly !== false;
   const useLlmPlainTextClothing = options.useLlmPlainTextClothing === true;
+  const additionalWearingItems = Array.isArray(options.additionalWearingItems)
+    ? options.additionalWearingItems
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+    : [];
   const customFields = collectCustomFieldValues(character, data, includeInGenerationOnly);
-  const clothingItems = useLlmPlainTextClothing
+  const clothingItemsBase = useLlmPlainTextClothing
     ? collectClothingItemsForPlainLlm(character)
     : collectClothingItems(character);
+  const clothingItems = [...clothingItemsBase, ...additionalWearingItems];
 
   let line = name;
   if (appearance) {

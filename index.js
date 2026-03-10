@@ -59,6 +59,7 @@ const defaultSettings = {
   show_image_generation_buttons: true,
   show_mods_panel: false,
   use_crop_tool_for_avatars: false,
+  remove_image_prompt_newlines: true,
   preview_image_prompts: false,
   add_prompt_guide: false,
   visual_command_start: "Ignore previous instructions. Your next response must be description of visual elements of previous message. Describe only the most recent message. Summarize. Your description will be used by professional artist to paint the scene - mention everything that is needed for that, and don't add any unnecessary information. KEEP IT SHORT. DO NOT INCLUDE ANY COMMENTARY ON MORAL OR SOCIAL DILLEMAS. ONLY DESCRIBE VISUAL ASPECT.\n\nDO NOT, UNDER ANY CIRMUSCANCES describe backstory or history, nor speculate on future. All you can describe is visuals.\n\nDO NOT USE FLOWERY LANGUAGE. USE ONLY SIMPLE WORDS, SIMPLE SENTENCES, AND BASIC CONSTRUCTS.",
@@ -126,6 +127,7 @@ async function loadSettings() {
   $("#show_image_generation_buttons").prop("checked", extension_settings[extensionName].show_image_generation_buttons !== false);
   $("#show_mods_panel").prop("checked", extension_settings[extensionName].show_mods_panel === true);
   $("#use_crop_tool_for_avatars").prop("checked", extension_settings[extensionName].use_crop_tool_for_avatars === true);
+  $("#remove_image_prompt_newlines").prop("checked", extension_settings[extensionName].remove_image_prompt_newlines !== false);
   $("#visual_command_start").val(extension_settings[extensionName].visual_command_start || defaultSettings.visual_command_start);
   $("#closeup_portrait_prompt").val(extension_settings[extensionName].closeup_portrait_prompt || defaultSettings.closeup_portrait_prompt);
   $("#full_body_portrait_prompt").val(extension_settings[extensionName].full_body_portrait_prompt || defaultSettings.full_body_portrait_prompt);
@@ -157,7 +159,7 @@ function populateCustomResolutionDropdowns() {
 function updateImageGenerationSettingsState() {
   const hasImageGeneration = Boolean(findExtension("stable-diffusion")?.enabled);
   const disabled = !hasImageGeneration;
-  const controls = $("#show_image_generation_buttons, #visual_command_start, #closeup_portrait_prompt, #full_body_portrait_prompt, #describe_background_prompt, #describe_viewer_eyes_prompt, #describe_current_scene_prompt, #custom-resolution-portrait, #custom-resolution-fullbody, #custom-resolution-background, #custom-resolution-viewer-eyes, #custom-resolution-scene, #reset-visual-command-start-prompt, #reset-closeup-portrait-prompt, #reset-full-body-portrait-prompt, #reset-describe-background-prompt, #reset-describe-viewer-eyes-prompt, #reset-describe-current-scene-prompt");
+  const controls = $("#show_image_generation_buttons, #remove_image_prompt_newlines, #visual_command_start, #closeup_portrait_prompt, #full_body_portrait_prompt, #describe_background_prompt, #describe_viewer_eyes_prompt, #describe_current_scene_prompt, #custom-resolution-portrait, #custom-resolution-fullbody, #custom-resolution-background, #custom-resolution-viewer-eyes, #custom-resolution-scene, #reset-visual-command-start-prompt, #reset-closeup-portrait-prompt, #reset-full-body-portrait-prompt, #reset-describe-background-prompt, #reset-describe-viewer-eyes-prompt, #reset-describe-current-scene-prompt");
   controls.prop("disabled", disabled);
   $("#image-generation-required-note").toggleClass("displayNone", !disabled);
 }
@@ -348,24 +350,6 @@ function registerSlashCommands() {
   }
 
   context.registerSlashCommand(
-    "randomize-stats",
-    async () => {
-      try {
-        const ctx = getContext();
-        const result = await randomizeStats(ctx);
-        return result.descDetails;
-      } catch (error) {
-        const message = error?.message || "Unknown randomizer error";
-        return `randomize-stats error: ${message}`;
-      }
-    },
-    [],
-    "Randomize stats from lorebook config and set local vars: {{getvar::descSize}} and {{getvar::descDetails}}.",
-    true,
-    true,
-  );
-
-  context.registerSlashCommand(
     "charmander-descriptions",
     async (args, trigger) => {
       console.log("Generating descriptions with args:", JSON.stringify(args), "and trigger:", trigger);
@@ -465,6 +449,11 @@ jQuery(async () => {
 
   $("#use_crop_tool_for_avatars").on("change", (event) => {
     extension_settings[extensionName].use_crop_tool_for_avatars = Boolean($(event.target).prop("checked"));
+    saveSettingsDebounced();
+  });
+
+  $("#remove_image_prompt_newlines").on("change", (event) => {
+    extension_settings[extensionName].remove_image_prompt_newlines = Boolean($(event.target).prop("checked"));
     saveSettingsDebounced();
   });
 
