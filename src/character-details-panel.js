@@ -32,6 +32,8 @@ let panelContainerRoot = null;
 let modsPanelContainerRoot = null;
 let mobileDrawerToggleButton = null;
 let mobileDrawerLeftToggleButton = null;
+let rightCompactToggleButton = null;
+let rightCompactRestoreButton = null;
 let modsPanelRoot = null;
 let modsAddButton = null;
 let modsPositionFilterRoot = null;
@@ -45,11 +47,14 @@ let modsPanelPositionFilter = "all";
 let managerExpanded = false;
 let mobileDrawerOpen = false;
 let mobileDrawerLeftOpen = false;
+let rightDrawerCompact = false;
 let mobileDrawerBindingsInitialized = false;
 let mobileDrawerLeftBindingsInitialized = false;
 let activeImageGeneration = null;
 const extensionName = "st-extension-example";
 const PERSONA_CHARACTER_STORAGE_KEY = "characterDetailsPersonaCharacters";
+const RIGHT_DRAWER_COMPACT_SETTING_KEY = "right_drawer_compact";
+const COMPACT_EMPTY_FOOTER_MESSAGE = "Enter chat to start managing details.";
 const FORBIDDEN_NAME_CHARS = /[\[\]\/|]/g;
 
 const MOBILE_DRAWER_MEDIA_QUERY = "(max-width: 1000px)";
@@ -102,6 +107,10 @@ function shouldUseCropToolForAvatars() {
 
 function shouldShowModsPanel() {
   return extension_settings?.[extensionName]?.show_mods_panel === true;
+}
+
+function shouldUseTallModsInDesktopMode() {
+  return extension_settings?.[extensionName]?.use_tall_mods_in_desktop_mode === true;
 }
 
 function shouldRemoveImagePromptNewlines() {
@@ -841,6 +850,99 @@ function isMobileDrawerMode() {
   return Boolean(window?.matchMedia?.(MOBILE_DRAWER_MEDIA_QUERY)?.matches);
 }
 
+function hasChatTarget(context = null) {
+  const sourceContext = context || getContext();
+  return (sourceContext.characterId !== undefined && sourceContext.characterId !== null) || Boolean(sourceContext.groupId);
+}
+
+function isRightDrawerCompactEnabled() {
+  return extension_settings?.[extensionName]?.[RIGHT_DRAWER_COMPACT_SETTING_KEY] === true;
+}
+
+function isRightDrawerCompactActive() {
+  return rightDrawerCompact === true && !managerExpanded;
+}
+
+function renderCompactEmptyFooterState(showMessage) {
+  if (!footerRoot?.length) {
+    return;
+  }
+
+  let message = footerRoot.find(".character-details-footer__empty-message");
+  if (!message.length) {
+    footerRoot.append('<div class="character-details-footer__empty-message displayNone"></div>');
+    message = footerRoot.find(".character-details-footer__empty-message");
+  }
+
+  if (showMessage) {
+    footerRoot.children().addClass("displayNone");
+    message.text(COMPACT_EMPTY_FOOTER_MESSAGE);
+    message.removeClass("displayNone");
+    return;
+  }
+
+  footerRoot.children().removeClass("displayNone");
+  message.addClass("displayNone");
+}
+
+function renderRightCompactControls() {
+  if (!panelContainerRoot?.length || !mobileDrawerToggleButton?.length || !rightCompactToggleButton?.length || !rightCompactRestoreButton?.length) {
+    return;
+  }
+
+  const compactMode = isRightDrawerCompactActive();
+  const mobileMode = isMobileDrawerMode();
+  const drawerVisible = mobileDrawerOpen === true;
+  const showCompactButton = mobileMode
+    ? drawerVisible
+    : drawerVisible && !managerExpanded && !compactMode;
+  const showRestoreButton = mobileMode
+    ? false
+    : drawerVisible && !managerExpanded && compactMode;
+
+  panelContainerRoot.toggleClass("is-compact", compactMode);
+  rightCompactToggleButton.toggleClass("displayNone", !showCompactButton);
+  rightCompactRestoreButton.toggleClass("displayNone", !showRestoreButton);
+
+  const compactIcon = rightCompactToggleButton.find("i");
+  if (mobileMode) {
+    compactIcon
+      .removeClass("fa-angle-down fa-arrow-down fa-arrow-up")
+      .addClass("fa-angle-up")
+      .toggleClass("is-compact-angle-down", !compactMode);
+  } else {
+    compactIcon
+      .removeClass("fa-angle-up fa-arrow-down fa-arrow-up is-compact-angle-down")
+      .addClass("fa-angle-down");
+  }
+
+  rightCompactToggleButton.attr("title", mobileMode
+    ? (compactMode ? "Show character details" : "Compact view")
+    : "Compact view");
+  rightCompactRestoreButton.attr("title", "Show character details");
+
+  mobileDrawerToggleButton.toggleClass(
+    "is-mobile-compact-anchor",
+    mobileMode && drawerVisible && compactMode,
+  );
+  mobileDrawerToggleButton.toggleClass(
+    "is-desktop-compact-anchor",
+    !mobileMode && drawerVisible && compactMode,
+  );
+}
+
+function setRightDrawerCompact(nextCompactValue, options = {}) {
+  const persist = options.persist !== false;
+  rightDrawerCompact = nextCompactValue === true;
+  if (persist) {
+    extension_settings[extensionName] = extension_settings[extensionName] || {};
+    extension_settings[extensionName][RIGHT_DRAWER_COMPACT_SETTING_KEY] = rightDrawerCompact;
+    saveSettingsDebounced();
+  }
+  renderPanel();
+  renderMobileDrawerState();
+}
+
 function renderMobileDrawerState() {
   if (!panelContainerRoot?.length || !mobileDrawerToggleButton?.length) {
     return;
@@ -856,6 +958,7 @@ function renderMobileDrawerState() {
   icon.removeClass("fa-angle-left fa-angle-right").addClass(mobileDrawerOpen ? "fa-angle-right" : "fa-angle-left");
 
   mobileDrawerToggleButton.attr("title", mobileDrawerOpen ? "Hide character panel" : "Show character panel");
+  renderRightCompactControls();
 }
 
 function initializeMobileDrawer() {
@@ -2560,27 +2663,51 @@ function renderCharacter(character) {
 
 function renderPanel() {
   const context = getContext();
-  const hasChatTarget = context.characterId !== undefined && context.characterId !== null || context.groupId;
+  const hasChatTargetValue = hasChatTarget(context);
+  const compactActive = isRightDrawerCompactActive();
 
-  if (!hasChatTarget) {
-    panelRoot.html(`
-      <div class="character-details__empty">
-        <div class="empty-title">Enter chat</div>
-        <div class="empty-subtitle">Select a character to start managing details.</div>
-      </div>
-    `);
-    footerRoot.addClass("displayNone");
+  if (!hasChatTargetValue) {
+    renderCompactEmptyFooterState(compactActive);
+    panelContainerRoot.toggleClass("is-compact", compactActive);
+    if (compactActive) {
+      panelRoot.empty();
+      panelRoot.addClass("hidden");
+      footerRoot.removeClass("displayNone");
+    } else {
+      panelRoot.removeClass("hidden");
+      panelRoot.html(`
+        <div class="character-details__empty">
+          <div class="empty-title">Enter chat</div>
+          <div class="empty-subtitle">Select a character to start managing details.</div>
+        </div>
+      `);
+      footerRoot.addClass("displayNone");
+    }
     floatingRoot.addClass("hidden");
     managerRoot.addClass("hidden");
+    renderRightCompactControls();
     return;
   }
 
+  renderCompactEmptyFooterState(false);
+  panelContainerRoot.toggleClass("is-compact", compactActive);
   footerRoot.removeClass("displayNone");
   updateFooterImageButtonsVisibility();
-  const character = getActiveCharacter(state);
-  panelRoot.html(renderCharacter(character));
+
+  if (compactActive || managerExpanded) {
+    if (compactActive) {
+      panelRoot.empty();
+    }
+    panelRoot.addClass("hidden");
+  } else {
+    const character = getActiveCharacter(state);
+    panelRoot.removeClass("hidden");
+    panelRoot.html(renderCharacter(character));
+  }
+
   renderFloatingCharacters();
   renderManagerPanel();
+  renderRightCompactControls();
 }
 
 function hasActiveChatSession(context) {
@@ -3789,6 +3916,9 @@ function renderModsPanel() {
     return;
   }
 
+  const useTallLayout = isMobileDrawerMode() || shouldUseTallModsInDesktopMode();
+  modsPanelRoot.toggleClass("is-tall-layout", useTallLayout);
+
   const context = getContext();
   const mods = getVisibleModsForCurrentChat(getModsSettings(context), context);
   if (!mods.length) {
@@ -3930,35 +4060,121 @@ function renderModsPanel() {
       `
       : shortnameControl;
 
-    const secondaryActionButton = groupEntry
-      ? `
-        <button
-          type="button"
-          class="mod-item__action"
-          data-action="add-mod-to-group"
-          data-mod-id="${escapeHtml(mod.id)}"
-          title="Add mod to group"
-        >
-          <i class="fa-solid fa-plus"></i>
-        </button>
-      `
-      : `
-        <button
-          type="button"
-          class="mod-item__action"
-          data-action="convert-mod-to-group"
-          data-mod-id="${escapeHtml(mod.id)}"
-          title="Convert to group"
-        >
-          <i class="fa-solid fa-layer-group"></i>
-        </button>
-      `;
+    const secondaryActionConfig = groupEntry
+      ? { action: "add-mod-to-group", title: "Add mod to group", icon: "fa-plus" }
+      : { action: "convert-mod-to-group", title: "Convert to group", icon: "fa-layer-group" };
+
+    const secondaryActionButton = `
+      <button
+        type="button"
+        class="mod-item__action"
+        data-action="${secondaryActionConfig.action}"
+        data-mod-id="${escapeHtml(mod.id)}"
+        title="${secondaryActionConfig.title}"
+      >
+        <i class="fa-solid ${secondaryActionConfig.icon}"></i>
+      </button>
+    `;
 
     const rowClass = [
       "mod-item",
       groupEntry ? "mod-item--group" : "",
       mod.characterId ? "mod-item--character" : "",
+      position === MOD_POSITION_AFTER_CHAR ? "mod-item--after-char" : "",
     ].filter(Boolean).join(" ");
+
+    if (useTallLayout) {
+      const afterCharInput = position === MOD_POSITION_AFTER_CHAR
+        ? `
+          <input
+            class="text_pole mod-item__charname-input mod-item__charname-input--tall ${afterCharInvalid ? "is-invalid" : ""}"
+            type="text"
+            value="${escapeHtml(afterCharName)}"
+            data-field="mod-after-char-name"
+            data-mod-id="${escapeHtml(mod.id)}"
+            title="${afterCharInvalid ? "Character not found in this chat" : "Character name for after-char mod"}"
+          />
+        `
+        : '<div class="mod-item__charname-placeholder"></div>';
+
+      return `
+        <div class="${rowClass}" data-mod-id="${escapeHtml(mod.id)}">
+          <div class="st-mod-item__tall-row-top">
+            <span class="mod-item__drag-handle" draggable="true" title="Drag to reorder">
+              <i class="fa-solid fa-grip-vertical"></i>
+            </span>
+            <button
+              type="button"
+              class="mod-item__led ${mod.enabled ? "is-enabled" : ""}"
+              data-action="toggle-mod-enabled"
+              data-mod-id="${escapeHtml(mod.id)}"
+              title="${mod.enabled ? "Disable mod" : "Enable mod"} (${stateScopeLabel} state)"
+            >
+              <i class="fa-solid fa-circle"></i>
+            </button>
+            <div class="mod-item__types-wrap">
+              <button
+                type="button"
+                class="menu_button mod-item__image-types-button ${allTypesEnabled ? "" : "is-filtered"}"
+                data-action="toggle-mod-image-types"
+                data-mod-id="${escapeHtml(mod.id)}"
+                title="${escapeHtml(getModImageTypesButtonTitle(mod))}"
+              >
+                <i class="fa-solid fa-images"></i>
+              </button>
+              <div class="mod-item__image-types-popup ${typesPopupOpen ? "is-open" : ""}">
+                ${typeButtons}
+              </div>
+            </div>
+            <div class="mod-item__position-wrap">
+              <button
+                type="button"
+                class="menu_button mod-item__position-trigger"
+                data-action="toggle-mod-position-menu"
+                data-mod-id="${escapeHtml(mod.id)}"
+                title="${escapeHtml(positionDefinition.label)}"
+              >
+                <i class="fa-solid ${positionDefinition.icon}"></i>
+              </button>
+              <div class="mod-item__position-popup ${positionPopupOpen ? "is-open" : ""}">
+                ${positionOptions}
+              </div>
+            </div>
+            ${afterCharInput}
+          </div>
+          <div class="st-mod-item__tall-row-bottom">
+            <div class="mod-item__shortname-slot">${shortnameControl}</div>
+            <button
+              type="button"
+              class="mod-item__action mod-item__action--edit"
+              data-action="edit-mod-entry"
+              data-mod-id="${escapeHtml(mod.id)}"
+              title="Edit mod"
+            >
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button
+              type="button"
+              class="mod-item__action mod-item__action--secondary"
+              data-action="${secondaryActionConfig.action}"
+              data-mod-id="${escapeHtml(mod.id)}"
+              title="${secondaryActionConfig.title}"
+            >
+              <i class="fa-solid ${secondaryActionConfig.icon}"></i>
+            </button>
+            <button
+              type="button"
+              class="mod-item__action mod-item__action--delete"
+              data-action="delete-mod"
+              data-mod-id="${escapeHtml(mod.id)}"
+              title="Delete mod"
+            >
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }
 
     return `
       <div class="${rowClass}" data-mod-id="${escapeHtml(mod.id)}">
@@ -5053,6 +5269,18 @@ async function handlePanelClick(event) {
     return renderPanel();
   }
 
+  if (resolvedAction === "set-compact-mode") {
+    managerExpanded = false;
+    setRightDrawerCompact(true);
+    return;
+  }
+
+  if (resolvedAction === "exit-compact-mode") {
+    managerExpanded = false;
+    setRightDrawerCompact(false);
+    return;
+  }
+
   if (resolvedAction === "add-character") {
     managerExpanded = true;
     await handleAddCharacter();
@@ -5540,6 +5768,18 @@ function bindEvents() {
   panelRoot.on("click", handlePanelClick);
   floatingRoot.on("click", handlePanelClick);
   managerRoot.on("click", handlePanelClick);
+  rightCompactToggleButton.on("click", () => {
+    managerExpanded = false;
+    if (isMobileDrawerMode()) {
+      setRightDrawerCompact(!isRightDrawerCompactActive());
+    } else {
+      setRightDrawerCompact(true);
+    }
+  });
+  rightCompactRestoreButton.on("click", () => {
+    managerExpanded = false;
+    setRightDrawerCompact(false);
+  });
   panelRoot.on("dragstart", handleLayerDragStart);
   panelRoot.on("dragover", handleLayerDragOver);
   panelRoot.on("drop", handleLayerDrop);
@@ -5559,6 +5799,9 @@ function bindEvents() {
   $(document)
     .off("st-extension-example:mods-panel-visibility-changed")
     .on("st-extension-example:mods-panel-visibility-changed", renderModsPanelVisibility);
+  $(document)
+    .off("st-extension-example:mods-layout-changed")
+    .on("st-extension-example:mods-layout-changed", renderModsPanel);
 }
 
 function initCharacterDetailsPanel() {
@@ -5570,6 +5813,8 @@ function initCharacterDetailsPanel() {
   managerRoot = $("#character-details-manager");
   mobileDrawerToggleButton = $("#st-extension-mobile-drawer-toggle");
   mobileDrawerLeftToggleButton = $("#st-extension-mobile-drawer-left-toggle");
+  rightCompactToggleButton = $("#st-extension-right-compact-toggle");
+  rightCompactRestoreButton = $("#st-extension-right-compact-restore");
   modsPanelRoot = $("#character-details-mods-panel");
   modsPositionFilterRoot = $("#character-details-mods-position-filter");
   modsAddButton = $("#character-details-mods-add");
@@ -5592,6 +5837,7 @@ function initCharacterDetailsPanel() {
     const nextContext = getContext();
     state = loadCharacterDetails(nextContext);
     extension_settings[extensionName] = extension_settings[extensionName] || {};
+    rightDrawerCompact = isRightDrawerCompactEnabled();
     extension_settings[extensionName].mods = getNormalizedModsSettings();
     cleanupModsLocalState(nextContext, extension_settings[extensionName].mods);
     ensureActiveCharacter(state);

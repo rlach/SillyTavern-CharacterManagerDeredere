@@ -58,6 +58,7 @@ const defaultSettings = {
   llm_clothing_plain_text_interpretation_prompt: DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT,
   show_image_generation_buttons: true,
   show_mods_panel: false,
+  use_tall_mods_in_desktop_mode: false,
   use_crop_tool_for_avatars: false,
   remove_image_prompt_newlines: true,
   preview_image_prompts: false,
@@ -126,6 +127,7 @@ async function loadSettings() {
   renderClothingInterpretationPromptField();
   $("#show_image_generation_buttons").prop("checked", extension_settings[extensionName].show_image_generation_buttons !== false);
   $("#show_mods_panel").prop("checked", extension_settings[extensionName].show_mods_panel === true);
+  $("#use_tall_mods_in_desktop_mode").prop("checked", extension_settings[extensionName].use_tall_mods_in_desktop_mode === true);
   $("#use_crop_tool_for_avatars").prop("checked", extension_settings[extensionName].use_crop_tool_for_avatars === true);
   $("#remove_image_prompt_newlines").prop("checked", extension_settings[extensionName].remove_image_prompt_newlines !== false);
   $("#visual_command_start").val(extension_settings[extensionName].visual_command_start || defaultSettings.visual_command_start);
@@ -413,6 +415,12 @@ jQuery(async () => {
   $("#show_mods_panel").on("change", (event) => {
     extension_settings[extensionName].show_mods_panel = Boolean($(event.target).prop("checked"));
     $(document).trigger("st-extension-example:mods-panel-visibility-changed");
+    saveSettingsDebounced();
+  });
+
+  $("#use_tall_mods_in_desktop_mode").on("change", (event) => {
+    extension_settings[extensionName].use_tall_mods_in_desktop_mode = Boolean($(event.target).prop("checked"));
+    $(document).trigger("st-extension-example:mods-layout-changed");
     saveSettingsDebounced();
   });
 
