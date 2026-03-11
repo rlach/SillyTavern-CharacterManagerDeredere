@@ -8,11 +8,43 @@ const DEFAULT_JSON_INTERPRETATION_PROMPT = "Interpretation for clothing state (a
 const DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The plain-text clothing list is the source of truth for what is currently worn.\n- In narration, mention only currently visible outer layers and partially visible items.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 
 function normalizeCustomField(field) {
+  const rawTarget = String(field?.target || "").trim().toLowerCase();
+  const target = rawTarget === "viewer" || rawTarget === "everyone" ? rawTarget : "mc";
   return {
     label: String(field?.label || "").trim(),
     varName: String(field?.varName || "").trim(),
-    target: field?.target === "viewer" ? "viewer" : "mc",
+    target,
   };
+}
+
+function parseEveryoneVarMap(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  let value = rawValue;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    if (!normalizedKey) {
+      continue;
+    }
+    normalized[normalizedKey] = entry;
+  }
+
+  return normalized;
 }
 
 function getCustomFieldsSettings() {
@@ -51,6 +83,17 @@ function buildCustomFieldsForCharacter(character, data, context) {
   const results = [];
 
   for (const field of fields) {
+    if (field.target === "everyone") {
+      const valueByCharacterId = parseEveryoneVarMap(context.variables?.local?.get?.(field.varName));
+      const value = formatVariableValue(valueByCharacterId[String(character.id || "").toLowerCase()]);
+      results.push({
+        label: field.label,
+        varName: field.varName,
+        value,
+      });
+      continue;
+    }
+
     const targetId = field.target === "viewer" ? viewerId : mcId;
     if (!targetId || targetId !== character.id) {
       continue;

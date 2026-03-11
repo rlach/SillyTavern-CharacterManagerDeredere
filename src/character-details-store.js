@@ -25,6 +25,56 @@ function normalizeShortId(value) {
   return SHORT_ID_REGEX.test(trimmed) ? trimmed : "";
 }
 
+function normalizeCustomFieldGeneratorToggles(input, characters) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+
+  const knownCharacterIds = new Set(
+    (Array.isArray(characters) ? characters : [])
+      .map((character) => normalizeShortId(character?.id))
+      .filter(Boolean),
+  );
+
+  const normalized = {};
+  for (const [varNameRaw, rawEntry] of Object.entries(input)) {
+    const varName = String(varNameRaw || "").trim();
+    if (!varName) {
+      continue;
+    }
+
+    if (typeof rawEntry === "boolean") {
+      normalized[varName] = rawEntry;
+      continue;
+    }
+
+    if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+      continue;
+    }
+
+    const byCharacterIdRaw = rawEntry.byCharacterId && typeof rawEntry.byCharacterId === "object"
+      ? rawEntry.byCharacterId
+      : {};
+    const byCharacterId = {};
+
+    for (const [characterIdRaw, value] of Object.entries(byCharacterIdRaw)) {
+      const characterId = normalizeShortId(characterIdRaw);
+      if (!characterId || (knownCharacterIds.size > 0 && !knownCharacterIds.has(characterId))) {
+        continue;
+      }
+
+      byCharacterId[characterId] = value === true;
+    }
+
+    normalized[varName] = {
+      linkedForAll: rawEntry.linkedForAll === true,
+      byCharacterId,
+    };
+  }
+
+  return normalized;
+}
+
 function getAlphanumericSeed(value) {
   return String(value || "")
     .toLowerCase()
@@ -223,9 +273,7 @@ function normalizeCharacterDetails(input, context) {
   data.viewerCharacterId = input.viewerCharacterId || null;
   data.mainCharacterId = input.mainCharacterId || null;
   data.lastGenDescriptionsTarget = input.lastGenDescriptionsTarget || null;
-  data.customFieldGeneratorToggles = input.customFieldGeneratorToggles && typeof input.customFieldGeneratorToggles === "object"
-    ? input.customFieldGeneratorToggles
-    : {};
+  data.customFieldGeneratorToggles = {};
   data.characters = Array.isArray(input.characters)
     ? input.characters.map((character) => normalizeCharacter(character, context))
     : [];
@@ -271,6 +319,8 @@ function normalizeCharacterDetails(input, context) {
   if (data.mainCharacterId && !data.characters.some((character) => character.id === data.mainCharacterId)) {
     data.mainCharacterId = null;
   }
+
+  data.customFieldGeneratorToggles = normalizeCustomFieldGeneratorToggles(input.customFieldGeneratorToggles, data.characters);
 
   return data;
 }

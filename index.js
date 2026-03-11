@@ -194,10 +194,12 @@ function escapeHtml(value) {
 }
 
 function normalizeCustomField(field) {
+  const rawTarget = String(field?.target || "").trim().toLowerCase();
+  const target = rawTarget === "viewer" || rawTarget === "everyone" ? rawTarget : "mc";
   return {
     label: String(field?.label || "").trim(),
     varName: String(field?.varName || "").trim(),
-    target: field?.target === "viewer" ? "viewer" : "mc",
+    target,
   };
 }
 
@@ -226,6 +228,154 @@ function getSelectedCharacterName(data) {
 
   const match = data.characters.find((character) => character?.id === data.activeCharacterId);
   return String(match?.name || "").trim();
+}
+
+function normalizeCharacterLookup(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function parseCharVarMap(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  let value = rawValue;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    if (!normalizedKey) {
+      continue;
+    }
+    normalized[normalizedKey] = entry;
+  }
+
+  return normalized;
+}
+
+function formatVariableValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function resolveCharacterByNameOrId(data, characterNameOrId) {
+  const characters = Array.isArray(data?.characters) ? data.characters : [];
+  const normalizedLookup = normalizeCharacterLookup(characterNameOrId);
+  if (!normalizedLookup) {
+    return null;
+  }
+
+  const idMatch = characters.find((character) => normalizeCharacterLookup(character?.id) === normalizedLookup);
+  if (idMatch) {
+    return idMatch;
+  }
+
+  return characters.find((character) => normalizeCharacterLookup(character?.name) === normalizedLookup) || null;
+}
+
+function canUseCustomFieldForCharacter(field, data, characterId) {
+  const normalizedCharacterId = String(characterId || "").trim().toLowerCase();
+  if (!field || !normalizedCharacterId) {
+    return false;
+  }
+
+  if (field.target === "everyone") {
+    return true;
+  }
+
+  if (field.target === "viewer") {
+    return String(data?.viewerCharacterId || "").trim().toLowerCase() === normalizedCharacterId;
+  }
+
+  return String(data?.mainCharacterId || "").trim().toLowerCase() === normalizedCharacterId;
+}
+
+function resolveScopedFieldForCharacter(varName, data, characterId) {
+  const normalizedVarName = String(varName || "").trim();
+  if (!normalizedVarName) {
+    return null;
+  }
+
+  const matchingFields = getCustomFieldsSettings().filter((field) => field.varName === normalizedVarName);
+  if (!matchingFields.length) {
+    return null;
+  }
+
+  return matchingFields.find((field) => canUseCustomFieldForCharacter(field, data, characterId)) || null;
+}
+
+function getCharScopedVariableValue(context, data, characterNameOrId, varName) {
+  const normalizedVarName = String(varName || "").trim();
+  if (!normalizedVarName) {
+    return "";
+  }
+
+  const character = resolveCharacterByNameOrId(data, characterNameOrId);
+  if (!character?.id) {
+    return "";
+  }
+
+  const resolvedField = resolveScopedFieldForCharacter(normalizedVarName, data, character.id);
+  if (!resolvedField) {
+    return "";
+  }
+
+  if (resolvedField.target === "everyone") {
+    const valueByCharacterId = parseCharVarMap(context.variables?.local?.get?.(normalizedVarName));
+    return valueByCharacterId[String(character.id).toLowerCase()] ?? "";
+  }
+
+  return context.variables?.local?.get?.(normalizedVarName) ?? "";
+}
+
+function setCharScopedVariableValue(context, data, characterNameOrId, varName, value) {
+  const normalizedVarName = String(varName || "").trim();
+  if (!normalizedVarName) {
+    return { ok: false, message: "Missing variable name." };
+  }
+
+  const character = resolveCharacterByNameOrId(data, characterNameOrId);
+  if (!character?.id) {
+    return { ok: true, value: "" };
+  }
+
+  const resolvedField = resolveScopedFieldForCharacter(normalizedVarName, data, character.id);
+  if (!resolvedField) {
+    return { ok: true, value: "" };
+  }
+
+  if (resolvedField.target !== "everyone") {
+    context.variables?.local?.set?.(normalizedVarName, value);
+    return { ok: true, value };
+  }
+
+  const valueByCharacterId = parseCharVarMap(context.variables?.local?.get?.(normalizedVarName));
+  valueByCharacterId[String(character.id).toLowerCase()] = value;
+  context.variables?.local?.set?.(normalizedVarName, valueByCharacterId);
+
+  return { ok: true, value };
 }
 
 function resolveGlobalCharacterDetailsMacroValue(macroName) {
@@ -278,13 +428,60 @@ function registerCharacterDetailsGlobalMacros() {
   }
 }
 
+function registerCharacterDetailsCharVarMacros() {
+  const context = getContext();
+  const macroRegistry = context?.macros?.registry;
+  if (!macroRegistry?.registerMacro) {
+    console.warn("CHARacter MANager: New macro registry API is not available");
+    return;
+  }
+
+  const category = context?.macros?.category?.VARIABLE || "variable";
+  macroRegistry.unregisterMacro?.("getCharVar");
+  macroRegistry.unregisterMacro?.("setCharVar");
+
+  macroRegistry.registerMacro("getCharVar", {
+    category,
+    unnamedArgs: [
+      { name: "charnameOrId" },
+      { name: "varName" },
+    ],
+    description: "Gets a character-scoped value from a chat-local object variable.",
+    returns: "Character value for the given key.",
+    handler: ({ unnamedArgs: [characterNameOrId, varName], normalize }) => {
+      const currentContext = getContext();
+      const data = loadCharacterDetails(currentContext);
+      const value = getCharScopedVariableValue(currentContext, data, characterNameOrId, varName);
+      return normalize(value);
+    },
+  });
+
+  macroRegistry.registerMacro("setCharVar", {
+    category,
+    unnamedArgs: [
+      { name: "charnameOrId" },
+      { name: "varName" },
+      { name: "value", optional: true, defaultValue: "" },
+    ],
+    description: "Sets a character-scoped value in a chat-local object variable.",
+    returns: "",
+    handler: ({ unnamedArgs: [characterNameOrId, varName, value] }) => {
+      const currentContext = getContext();
+      const data = loadCharacterDetails(currentContext);
+      setCharScopedVariableValue(currentContext, data, characterNameOrId, varName, value || "");
+      return "";
+    },
+  });
+}
+
 function readCustomFieldsFromDom() {
   const fields = [];
   $("#custom-fields-list .custom-field-row").each((index, row) => {
     const $row = $(row);
     const label = String($row.find("[data-field='label']").val() || "").trim();
     const varName = String($row.find("[data-field='varName']").val() || "").trim();
-    const target = $row.find("[data-field='target']").val() === "viewer" ? "viewer" : "mc";
+    const targetValue = String($row.find("[data-field='target']").val() || "").trim().toLowerCase();
+    const target = targetValue === "viewer" || targetValue === "everyone" ? targetValue : "mc";
     if (!label && !varName) {
       return;
     }
@@ -304,7 +501,7 @@ function renderCustomFieldsSettings() {
   list.empty();
 
   for (const field of fields) {
-    const target = field.target === "viewer" ? "viewer" : "mc";
+    const target = field.target === "viewer" || field.target === "everyone" ? field.target : "mc";
     list.append(`
       <div class="custom-field-row">
         <input class="text_pole" type="text" placeholder="Field label" data-field="label" value="${escapeHtml(field.label)}" />
@@ -312,6 +509,7 @@ function renderCustomFieldsSettings() {
         <select class="text_pole" data-field="target">
           <option value="mc" ${target === "mc" ? "selected" : ""}>MC</option>
           <option value="viewer" ${target === "viewer" ? "selected" : ""}>Viewer</option>
+          <option value="everyone" ${target === "everyone" ? "selected" : ""}>Everyone</option>
         </select>
         <button class="menu_button" type="button" data-action="remove-custom-field" title="Remove">
           <i class="fa-solid fa-trash"></i>
@@ -386,6 +584,180 @@ function registerSlashCommands() {
     true,
     true
   );
+
+  const canUseTypedSlashApi = Boolean(
+    context?.SlashCommandParser?.addCommandObject
+    && context?.SlashCommand?.fromProps
+    && context?.SlashCommandNamedArgument?.fromProps
+    && context?.SlashCommandArgument?.fromProps
+    && context?.ARGUMENT_TYPE
+    && context?.SlashCommandEnumValue
+  );
+
+  if (!canUseTypedSlashApi) {
+    console.error("CHARacter MANager: Typed slash command API is required (latest ST build).");
+    return;
+  }
+
+  const { SlashCommandParser, SlashCommand, SlashCommandNamedArgument, SlashCommandArgument, ARGUMENT_TYPE, SlashCommandEnumValue } = context;
+  const charEnumProvider = () => {
+    const data = loadCharacterDetails(getContext());
+    const values = [];
+    for (const character of Array.isArray(data?.characters) ? data.characters : []) {
+      const id = String(character?.id || "").trim();
+      const name = String(character?.name || "").trim();
+
+      if (id) {
+        values.push(new SlashCommandEnumValue(id, name ? `Character ID (${name})` : "Character ID"));
+      }
+      if (name) {
+        values.push(new SlashCommandEnumValue(name, id ? `Character name (ID: ${id})` : "Character name"));
+      }
+    }
+
+    return values;
+  };
+  const keyEnumProvider = () => {
+    const values = [];
+    const seen = new Set();
+
+    for (const field of getCustomFieldsSettings()) {
+      const varName = String(field?.varName || "").trim();
+      if (!varName || seen.has(varName)) {
+        continue;
+      }
+
+      seen.add(varName);
+      const scopeLabel = field?.target ? `scope: ${field.target}` : "configured custom field";
+      values.push(new SlashCommandEnumValue(varName, scopeLabel));
+    }
+
+    return values;
+  };
+
+  SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: "getCharVar",
+    callback: async (args, value) => {
+      const charNameOrId = String(args?.char || args?.name || args?.id || "").trim();
+      const varName = String(args?.key || value || "").trim();
+
+      if (!charNameOrId || !varName) {
+        return "Usage: /getCharVar name=<charNameOrId> key=<varName>";
+      }
+
+      const ctx = getContext();
+      const data = loadCharacterDetails(ctx);
+      return formatVariableValue(getCharScopedVariableValue(ctx, data, charNameOrId, varName));
+    },
+    returns: "the character variable value",
+    namedArgumentList: [
+      SlashCommandNamedArgument.fromProps({
+        name: "char",
+        aliasList: ["name", "id"],
+        description: "character name or 3-letter ID (ID is preferred if ambiguous)",
+        typeList: [ARGUMENT_TYPE.STRING],
+        isRequired: true,
+        enumProvider: charEnumProvider,
+      }),
+      SlashCommandNamedArgument.fromProps({
+        name: "key",
+        description: "object variable name",
+        typeList: [ARGUMENT_TYPE.VARIABLE_NAME],
+        isRequired: false,
+        enumProvider: keyEnumProvider,
+      }),
+    ],
+    unnamedArgumentList: [
+      SlashCommandArgument.fromProps({
+        description: "key (alternative to key=...)",
+        typeList: [ARGUMENT_TYPE.VARIABLE_NAME],
+        isRequired: false,
+        enumProvider: keyEnumProvider,
+      }),
+    ],
+    helpString: `
+      <div>
+        Get per-character value from a chat-local object variable and pass it down the pipe.
+      </div>
+      <div>
+        <strong>Examples:</strong>
+        <ul>
+          <li><pre><code class="language-stscript">/getCharVar name=Areinu key=stats</code></pre></li>
+          <li><pre><code class="language-stscript">/getCharVar id=olx stats</code></pre></li>
+        </ul>
+      </div>
+    `,
+  }));
+
+  SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+    name: "setCharVar",
+    callback: async (args, value) => {
+      const charNameOrId = String(args?.char || args?.name || args?.id || "").trim();
+      const varName = String(args?.key || "").trim();
+      const hasNamedValue = Object.prototype.hasOwnProperty.call(args || {}, "value");
+      const nextValue = hasNamedValue ? args.value : value;
+
+      if (!charNameOrId || !varName) {
+        return "Usage: /setCharVar name=<charNameOrId> key=<varName> <value>";
+      }
+
+      if (!hasNamedValue && String(nextValue ?? "").trim() === "") {
+        return "Usage: /setCharVar name=<charNameOrId> key=<varName> <value>";
+      }
+
+      const ctx = getContext();
+      const data = loadCharacterDetails(ctx);
+      const result = setCharScopedVariableValue(ctx, data, charNameOrId, varName, nextValue ?? "");
+      if (!result.ok) {
+        return result.message;
+      }
+
+      return formatVariableValue(result.value);
+    },
+    returns: "the set character variable value",
+    namedArgumentList: [
+      SlashCommandNamedArgument.fromProps({
+        name: "char",
+        aliasList: ["name", "id"],
+        description: "character name or 3-letter ID (ID is preferred if ambiguous)",
+        typeList: [ARGUMENT_TYPE.STRING],
+        isRequired: true,
+        enumProvider: charEnumProvider,
+      }),
+      SlashCommandNamedArgument.fromProps({
+        name: "key",
+        description: "object variable name",
+        typeList: [ARGUMENT_TYPE.VARIABLE_NAME],
+        isRequired: true,
+        enumProvider: keyEnumProvider,
+      }),
+      SlashCommandNamedArgument.fromProps({
+        name: "value",
+        description: "value to set (optional if passed as unnamed argument)",
+        typeList: [ARGUMENT_TYPE.STRING, ARGUMENT_TYPE.NUMBER, ARGUMENT_TYPE.BOOLEAN, ARGUMENT_TYPE.LIST, ARGUMENT_TYPE.DICTIONARY],
+        isRequired: false,
+      }),
+    ],
+    unnamedArgumentList: [
+      SlashCommandArgument.fromProps({
+        description: "value",
+        typeList: [ARGUMENT_TYPE.STRING, ARGUMENT_TYPE.NUMBER, ARGUMENT_TYPE.BOOLEAN, ARGUMENT_TYPE.LIST, ARGUMENT_TYPE.DICTIONARY],
+        isRequired: false,
+      }),
+    ],
+    helpString: `
+      <div>
+        Set per-character value in a chat-local object variable and pass the value down the pipe.
+      </div>
+      <div>
+        <strong>Examples:</strong>
+        <ul>
+          <li><pre><code class="language-stscript">/setCharVar name=Areinu key=stats 5 str\\n5 dex</code></pre></li>
+          <li><pre><code class="language-stscript">/setCharVar id=olx key=stats value="4 str\\n6 dex"</code></pre></li>
+        </ul>
+      </div>
+    `,
+  }));
 }
 
 // This function is called when the extension is loaded
@@ -582,6 +954,7 @@ jQuery(async () => {
   // Register slash commands
   registerSlashCommands();
   registerCharacterDetailsGlobalMacros();
+  registerCharacterDetailsCharVarMacros();
 
   initCharacterDetailsPanel();
   initCharacterDetailsPromptInjector();

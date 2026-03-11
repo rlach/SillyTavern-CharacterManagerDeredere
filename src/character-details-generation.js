@@ -168,11 +168,76 @@ function serializePromptMessagesForQuietPrompt(messages) {
 }
 
 function normalizeCustomField(field) {
+  const rawTarget = String(field?.target || "").trim().toLowerCase();
+  const target = rawTarget === "viewer" || rawTarget === "everyone" ? rawTarget : "mc";
   return {
     label: String(field?.label || "").trim(),
     varName: String(field?.varName || "").trim(),
-    target: field?.target === "viewer" ? "viewer" : "mc",
+    target,
   };
+}
+
+function parseEveryoneVarMap(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  let value = rawValue;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = String(key || "").trim().toLowerCase();
+    if (!normalizedKey) {
+      continue;
+    }
+    normalized[normalizedKey] = entry;
+  }
+
+  return normalized;
+}
+
+function getCustomFieldGeneratorEnabled(data, field, characterId) {
+  const toggles = data?.customFieldGeneratorToggles || {};
+  const rawToggle = toggles?.[field.varName];
+
+  if (field.target !== "everyone") {
+    return rawToggle === true;
+  }
+
+  if (typeof rawToggle === "boolean") {
+    return rawToggle;
+  }
+
+  if (!rawToggle || typeof rawToggle !== "object" || Array.isArray(rawToggle)) {
+    return false;
+  }
+
+  const normalizedCharacterId = String(characterId || "").trim().toLowerCase();
+  const byCharacterId = rawToggle.byCharacterId && typeof rawToggle.byCharacterId === "object"
+    ? rawToggle.byCharacterId
+    : {};
+
+  if (rawToggle.linkedForAll === true) {
+    if (normalizedCharacterId && Object.prototype.hasOwnProperty.call(byCharacterId, normalizedCharacterId)) {
+      return byCharacterId[normalizedCharacterId] === true;
+    }
+
+    const firstValue = Object.values(byCharacterId)[0];
+    return firstValue === true;
+  }
+
+  return normalizedCharacterId ? byCharacterId[normalizedCharacterId] === true : false;
 }
 
 function getCustomFieldsSettings() {
@@ -211,16 +276,23 @@ function buildCustomFieldsForCharacter(character, data, context, includeInGenera
   const results = [];
 
   for (const field of fields) {
-    if (includeInGenerationOnly && !data.customFieldGeneratorToggles?.[field.varName]) {
+    if (includeInGenerationOnly && !getCustomFieldGeneratorEnabled(data, field, character.id)) {
       continue;
     }
 
-    const targetId = field.target === "viewer" ? viewerId : mcId;
-    if (!targetId || targetId !== character.id) {
-      continue;
+    let value;
+    if (field.target === "everyone") {
+      const valueByCharacterId = parseEveryoneVarMap(context.variables?.local?.get?.(field.varName));
+      value = formatVariableValue(valueByCharacterId[String(character.id || "").toLowerCase()]);
+    } else {
+      const targetId = field.target === "viewer" ? viewerId : mcId;
+      if (!targetId || targetId !== character.id) {
+        continue;
+      }
+
+      value = formatVariableValue(context.variables?.local?.get?.(field.varName));
     }
 
-    const value = formatVariableValue(context.variables?.local?.get?.(field.varName));
     results.push({
       label: field.label,
       varName: field.varName,

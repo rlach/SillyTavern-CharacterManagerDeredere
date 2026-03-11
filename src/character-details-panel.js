@@ -2020,7 +2020,7 @@ function renderFloatingCharacters() {
 
   floatingRoot.html(`
     <button class="character-floating__toggle" type="button" data-action="expand-manager" title="Open character manager">
-      <i class="fa-solid fa-angle-left"></i>
+      <i class="fa-solid fa-users"></i>
     </button>
     ${items}
   `);
@@ -2175,10 +2175,12 @@ function sanitizeForbiddenText(value) {
 }
 
 function normalizeCustomField(field) {
+  const rawTarget = String(field?.target || "").trim().toLowerCase();
+  const target = rawTarget === "viewer" || rawTarget === "everyone" ? rawTarget : "mc";
   return {
     label: String(field?.label || "").trim(),
     varName: String(field?.varName || "").trim(),
-    target: field?.target === "viewer" ? "viewer" : "mc",
+    target,
   };
 }
 
@@ -2209,6 +2211,172 @@ function formatVariableValue(value) {
   }
 }
 
+function normalizeCharacterIdKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function parseEveryoneVarMap(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  let value = rawValue;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const normalized = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = normalizeCharacterIdKey(key);
+    if (!normalizedKey) {
+      continue;
+    }
+
+    normalized[normalizedKey] = entry;
+  }
+
+  return normalized;
+}
+
+function getCustomFieldByVarName(varName) {
+  const normalizedVarName = String(varName || "").trim();
+  if (!normalizedVarName) {
+    return null;
+  }
+
+  const fields = getCustomFieldsSettings().filter((field) => field.varName === normalizedVarName);
+  if (!fields.length) {
+    return null;
+  }
+
+  return fields.find((field) => field.target === "everyone") || fields[0];
+}
+
+function getCustomFieldGeneratorToggleForCharacter(data, field, characterId) {
+  const toggles = data?.customFieldGeneratorToggles || {};
+  const rawToggle = toggles?.[field.varName];
+
+  if (field.target !== "everyone") {
+    return rawToggle === true;
+  }
+
+  if (typeof rawToggle === "boolean") {
+    return rawToggle;
+  }
+
+  if (!rawToggle || typeof rawToggle !== "object" || Array.isArray(rawToggle)) {
+    return false;
+  }
+
+  const byCharacterId = rawToggle.byCharacterId && typeof rawToggle.byCharacterId === "object"
+    ? rawToggle.byCharacterId
+    : {};
+  const normalizedCharacterId = normalizeCharacterIdKey(characterId);
+
+  if (rawToggle.linkedForAll === true) {
+    if (normalizedCharacterId && Object.prototype.hasOwnProperty.call(byCharacterId, normalizedCharacterId)) {
+      return byCharacterId[normalizedCharacterId] === true;
+    }
+
+    const firstValue = Object.values(byCharacterId)[0];
+    return firstValue === true;
+  }
+
+  return normalizedCharacterId ? byCharacterId[normalizedCharacterId] === true : false;
+}
+
+function isCustomFieldGeneratorLinkedForAll(data, field) {
+  if (field?.target !== "everyone") {
+    return false;
+  }
+
+  const rawToggle = data?.customFieldGeneratorToggles?.[field.varName];
+  return Boolean(rawToggle && typeof rawToggle === "object" && rawToggle.linkedForAll === true);
+}
+
+function setCustomFieldGeneratorLinkForAll(data, field, characterId, linkedForAll) {
+  if (field?.target !== "everyone") {
+    return;
+  }
+
+  data.customFieldGeneratorToggles = data.customFieldGeneratorToggles || {};
+  const varName = field.varName;
+  const existing = data.customFieldGeneratorToggles[varName];
+  const byCharacterId = existing && typeof existing === "object" && !Array.isArray(existing) && existing.byCharacterId && typeof existing.byCharacterId === "object"
+    ? { ...existing.byCharacterId }
+    : {};
+
+  const normalizedCharacterId = normalizeCharacterIdKey(characterId);
+  const currentCharacterState = getCustomFieldGeneratorToggleForCharacter(data, field, normalizedCharacterId);
+  const characters = Array.isArray(data?.characters) ? data.characters : [];
+
+  if (linkedForAll) {
+    for (const character of characters) {
+      const nextCharacterId = normalizeCharacterIdKey(character?.id);
+      if (!nextCharacterId) {
+        continue;
+      }
+      byCharacterId[nextCharacterId] = currentCharacterState;
+    }
+  }
+
+  data.customFieldGeneratorToggles[varName] = {
+    linkedForAll,
+    byCharacterId,
+  };
+}
+
+function setCustomFieldGeneratorToggleForCharacter(data, field, characterId, enabled) {
+  const varName = field?.varName;
+  if (!varName) {
+    return;
+  }
+
+  data.customFieldGeneratorToggles = data.customFieldGeneratorToggles || {};
+  const normalizedEnabled = enabled === true;
+
+  if (field.target !== "everyone") {
+    data.customFieldGeneratorToggles[varName] = normalizedEnabled;
+    return;
+  }
+
+  const existing = data.customFieldGeneratorToggles[varName];
+  const linkedForAll = Boolean(existing && typeof existing === "object" && !Array.isArray(existing) && existing.linkedForAll === true);
+  const byCharacterId = existing && typeof existing === "object" && !Array.isArray(existing) && existing.byCharacterId && typeof existing.byCharacterId === "object"
+    ? { ...existing.byCharacterId }
+    : {};
+
+  const normalizedCharacterId = normalizeCharacterIdKey(characterId);
+  if (!normalizedCharacterId) {
+    return;
+  }
+
+  if (linkedForAll) {
+    for (const character of Array.isArray(data?.characters) ? data.characters : []) {
+      const nextCharacterId = normalizeCharacterIdKey(character?.id);
+      if (!nextCharacterId) {
+        continue;
+      }
+      byCharacterId[nextCharacterId] = normalizedEnabled;
+    }
+  } else {
+    byCharacterId[normalizedCharacterId] = normalizedEnabled;
+  }
+
+  data.customFieldGeneratorToggles[varName] = {
+    linkedForAll,
+    byCharacterId,
+  };
+}
+
 function getCustomFieldsForCharacter(character, context) {
   const fields = getCustomFieldsSettings();
   if (!fields.length) {
@@ -2217,14 +2385,29 @@ function getCustomFieldsForCharacter(character, context) {
 
   const results = [];
   for (const field of fields) {
-    const targetId = field.target === "viewer" ? state?.viewerCharacterId : state?.mainCharacterId;
-    if (!targetId || targetId !== character.id) {
-      continue;
+    let value;
+    if (field.target === "everyone") {
+      const valueByCharacterId = parseEveryoneVarMap(context.variables?.local?.get?.(field.varName));
+      value = formatVariableValue(valueByCharacterId[normalizeCharacterIdKey(character.id)]);
+    } else {
+      const targetId = field.target === "viewer" ? state?.viewerCharacterId : state?.mainCharacterId;
+      if (!targetId || targetId !== character.id) {
+        continue;
+      }
+
+      value = formatVariableValue(context.variables?.local?.get?.(field.varName));
     }
 
-    const value = formatVariableValue(context.variables?.local?.get?.(field.varName));
-    const enabled = Boolean(state?.customFieldGeneratorToggles?.[field.varName]);
-    results.push({ label: field.label, varName: field.varName, value, enabled });
+    const enabled = getCustomFieldGeneratorToggleForCharacter(state, field, character.id);
+    const linkedForAll = isCustomFieldGeneratorLinkedForAll(state, field);
+    results.push({
+      label: field.label,
+      varName: field.varName,
+      target: field.target,
+      value,
+      enabled,
+      linkedForAll,
+    });
   }
 
   return results;
@@ -2481,6 +2664,12 @@ function renderLayers(layers, depth, inheritedOcclusion) {
           : effectiveOcclusion === "partial"
             ? "layer--occluded-partial"
             : "";
+      const stateClass =
+        layer.state === "off"
+          ? "layer--state-off"
+          : layer.state === "partial"
+            ? "layer--state-partial"
+            : "layer--state-on";
 
       const stateLabel = layer.state === "on" ? "On" : layer.state === "partial" ? "Partial" : "Off";
       const hasLockedChild = checkHasLockedChild(layer.children);
@@ -2502,7 +2691,7 @@ function renderLayers(layers, depth, inheritedOcclusion) {
       const childrenHtml = renderLayers(layer.children, depth + 1, nextOcclusion);
 
       return `
-        <div class="clothing-layer ${occlusionClass}" data-layer-id="${layer.id}" style="--depth:${depth}">
+        <div class="clothing-layer ${occlusionClass} ${stateClass}" data-layer-id="${layer.id}" style="--depth:${depth}">
           <button class="layer-action icon-button layer-drag-handle" type="button" title="Drag layer" draggable="true">
             <i class="fa-solid fa-grip-vertical"></i>
           </button>
@@ -2601,17 +2790,28 @@ function renderCharacter(character) {
   const uploadAvatarTitle = hasUploadedAvatar ? "Upload an image (overwrite)" : "Upload an image";
   const customFields = getCustomFieldsForCharacter(character, context);
   const customFieldsHtml = customFields
-    .map((field) => `
+    .map((field) => {
+      const linkToggleButton = field.target === "everyone"
+        ? `
+          <button class="group-action icon-button custom-field-toggle ${field.linkedForAll ? "is-on" : ""}" type="button" data-action="toggle-custom-field-link" data-var-name="${escapeHtml(field.varName)}" title="${field.linkedForAll ? "Unlink send state for all chars" : "Link send state for all chars"}">
+            <i class="fa-solid ${field.linkedForAll ? "fa-link" : "fa-link-slash"}"></i>
+          </button>
+        `
+        : "";
+
+      return `
       <div class="character-details__section">
         <div class="character-details__header">
           <div class="character-details__label">${escapeHtml(field.label)}</div>
+          ${linkToggleButton}
           <button class="group-action icon-button custom-field-toggle ${field.enabled ? "is-on" : ""}" type="button" data-action="toggle-custom-field" data-var-name="${escapeHtml(field.varName)}" title="${field.enabled ? "Send to generator" : "Do not send to generator"}">
             <i class="fa-solid ${field.enabled ? "fa-paper-plane" : "fa-paper-plane"}"></i>
           </button>
         </div>
         <textarea class="text_pole character-details__textarea character-details__custom-field" rows="2" data-field="custom-field-value" data-var-name="${escapeHtml(field.varName)}">${escapeHtml(field.value || "")}</textarea>
       </div>
-    `)
+    `;
+    })
     .join("");
 
   return `
@@ -3396,17 +3596,26 @@ async function handleSetAsChatBackgroundClick(event) {
   }
 }
 
-function getDefinedCustomFieldVarNames() {
-  return getCustomFieldsSettings()
-    .map((field) => field.varName)
-    .filter(Boolean);
+function getDefinedCustomFieldsByVarName() {
+  const byVarName = new Map();
+  for (const field of getCustomFieldsSettings()) {
+    if (!field?.varName || byVarName.has(field.varName)) {
+      continue;
+    }
+    byVarName.set(field.varName, field);
+  }
+
+  return byVarName;
 }
 
 function collectCustomFieldValues(context) {
   const values = {};
-  const varNames = getDefinedCustomFieldVarNames();
-  for (const varName of varNames) {
-    values[varName] = formatVariableValue(context.variables?.local?.get?.(varName));
+  const fieldsByVarName = getDefinedCustomFieldsByVarName();
+  for (const [varName, field] of fieldsByVarName.entries()) {
+    const rawValue = context.variables?.local?.get?.(varName);
+    values[varName] = field.target === "everyone"
+      ? parseEveryoneVarMap(rawValue)
+      : formatVariableValue(rawValue);
   }
   return values;
 }
@@ -3417,13 +3626,15 @@ function normalizeImportedCustomFieldValues(rawValues) {
   }
 
   const normalized = {};
-  const varNames = getDefinedCustomFieldVarNames();
-  for (const varName of varNames) {
+  const fieldsByVarName = getDefinedCustomFieldsByVarName();
+  for (const [varName, field] of fieldsByVarName.entries()) {
     if (!Object.prototype.hasOwnProperty.call(rawValues, varName)) {
       continue;
     }
 
-    normalized[varName] = formatVariableValue(rawValues[varName]);
+    normalized[varName] = field.target === "everyone"
+      ? parseEveryoneVarMap(rawValues[varName])
+      : formatVariableValue(rawValues[varName]);
   }
 
   return normalized;
@@ -3431,13 +3642,16 @@ function normalizeImportedCustomFieldValues(rawValues) {
 
 function applyImportedCustomFieldValues(context, values) {
   const normalized = values && typeof values === "object" ? values : {};
-  const varNames = getDefinedCustomFieldVarNames();
+  const fieldsByVarName = getDefinedCustomFieldsByVarName();
 
-  for (const varName of varNames) {
+  for (const [varName, field] of fieldsByVarName.entries()) {
     if (Object.prototype.hasOwnProperty.call(normalized, varName)) {
-      context.variables?.local?.set?.(varName, formatVariableValue(normalized[varName]));
+      const nextValue = field.target === "everyone"
+        ? parseEveryoneVarMap(normalized[varName])
+        : formatVariableValue(normalized[varName]);
+      context.variables?.local?.set?.(varName, nextValue);
     } else {
-      context.variables?.local?.set?.(varName, "");
+      context.variables?.local?.set?.(varName, field.target === "everyone" ? {} : "");
     }
   }
 }
@@ -5245,7 +5459,15 @@ function handlePanelInput(event) {
     const varName = target.dataset.varName;
     if (varName) {
       const context = getContext();
-      context.variables?.local?.set?.(varName, target.value);
+      const customField = getCustomFieldByVarName(varName);
+      if (customField?.target === "everyone") {
+        const characterId = normalizeCharacterIdKey(character.id);
+        const valueByCharacterId = parseEveryoneVarMap(context.variables?.local?.get?.(varName));
+        valueByCharacterId[characterId] = target.value;
+        context.variables?.local?.set?.(varName, valueByCharacterId);
+      } else {
+        context.variables?.local?.set?.(varName, target.value);
+      }
       updateDescriptionsOnly();
     }
   }
@@ -5513,8 +5735,27 @@ async function handlePanelClick(event) {
   if (resolvedAction === "toggle-custom-field") {
     const varName = actionOwner?.dataset.varName;
     if (varName) {
-      state.customFieldGeneratorToggles = state.customFieldGeneratorToggles || {};
-      state.customFieldGeneratorToggles[varName] = !state.customFieldGeneratorToggles[varName];
+      const customField = getCustomFieldByVarName(varName);
+      if (!customField) {
+        return;
+      }
+
+      const currentEnabled = getCustomFieldGeneratorToggleForCharacter(state, customField, character.id);
+      setCustomFieldGeneratorToggleForCharacter(state, customField, character.id, !currentEnabled);
+      return saveAndRender();
+    }
+  }
+
+  if (resolvedAction === "toggle-custom-field-link") {
+    const varName = actionOwner?.dataset.varName;
+    if (varName) {
+      const customField = getCustomFieldByVarName(varName);
+      if (customField?.target !== "everyone") {
+        return;
+      }
+
+      const nextLinkedState = !isCustomFieldGeneratorLinkedForAll(state, customField);
+      setCustomFieldGeneratorLinkForAll(state, customField, character.id, nextLinkedState);
       return saveAndRender();
     }
   }

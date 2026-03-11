@@ -1695,10 +1695,24 @@
 	filter: grayscale(0.6);
 }
 
+.layer--state-off {
+	opacity: 0.35;
+	filter: grayscale(0.9);
+}
+
+.layer--state-partial {
+	opacity: 0.6;
+	filter: grayscale(0.6);
+}
+
 .layer--occluded-full .layer-name,
 .layer--occluded-partial .layer-name,
+.layer--state-off .layer-name,
+.layer--state-partial .layer-name,
 .layer--occluded-full .group-name,
-.layer--occluded-partial .group-name {
+.layer--occluded-partial .group-name,
+.layer--state-off .group-name,
+.layer--state-partial .group-name {
 	color: var(--SmartThemeEmColor);
 }
 
