@@ -1455,6 +1455,16 @@ function restoreGenerationButtonState(button) {
 }
 
 async function generateWithChatStopSemantics(context, promptText) {
+  if (typeof context?.generateQuietPrompt === "function") {
+    return await context.generateQuietPrompt({
+      quietPrompt: promptText,
+      quietToLoud: false,
+      removeReasoning: false,
+      trimToSentence: false,
+    });
+  }
+
+  // Legacy fallback for older ST builds without generateQuietPrompt in context.
   const sendTextarea = $("#send_textarea");
   const previousInputValue = sendTextarea.length ? String(sendTextarea.val() || "") : "";
 
