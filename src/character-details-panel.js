@@ -1,5 +1,5 @@
 import { getContext, extension_settings, findExtension } from "../../../../extensions.js";
-import { callGenericPopup, POPUP_TYPE, Popup } from "../../../../popup.js";
+import { callGenericPopup, POPUP_TYPE, POPUP_RESULT, Popup } from "../../../../popup.js";
 import { saveSettingsDebounced, user_avatar as globalUserAvatar } from "../../../../../script.js";
 import {
   loadCharacterDetails,
@@ -51,6 +51,7 @@ let rightDrawerCompact = false;
 let mobileDrawerBindingsInitialized = false;
 let mobileDrawerLeftBindingsInitialized = false;
 let activeImageGeneration = null;
+let lastObservedPersonaSignature = null;
 const extensionName = "st-extension-example";
 const PERSONA_CHARACTER_STORAGE_KEY = "characterDetailsPersonaCharacters";
 const RIGHT_DRAWER_COMPACT_SETTING_KEY = "right_drawer_compact";
@@ -70,6 +71,7 @@ const MOD_STATE_SCOPE_GLOBAL = "global";
 const MOD_STATE_SCOPE_LOCAL = "local";
 const MODS_LOCAL_STATE_STORAGE_KEY = "characterDetailsModsLocalState";
 const PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID = "character-details-remove-newlines";
+const GUIDE_PROMPTS_LOCAL_STORAGE_KEY = "characterDetailsGuidePrompts";
 const MOD_POSITION_DEFINITIONS = [
   { key: MOD_POSITION_START, label: "Beginning", icon: "fa-hourglass-start" },
   { key: MOD_POSITION_AFTER_CHAR, label: "After char X", icon: "fa-user-tag" },
@@ -1348,17 +1350,358 @@ async function generateWithChatStopSemantics(context, promptText) {
   return response;
 }
 
+function normalizeGuidePromptValue(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+}
+
+function normalizeGuidePromptList(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+
+  let value = rawValue;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => normalizeGuidePromptValue(entry))
+    .filter(Boolean);
+}
+
+function readGuidePromptList(context) {
+  const rawValue = context?.variables?.local?.get?.(GUIDE_PROMPTS_LOCAL_STORAGE_KEY);
+  return normalizeGuidePromptList(rawValue);
+}
+
+function writeGuidePromptList(context, promptList) {
+  const normalizedList = normalizeGuidePromptList(promptList);
+  context?.variables?.local?.set?.(GUIDE_PROMPTS_LOCAL_STORAGE_KEY, normalizedList);
+}
+
+function buildTextMeasurementFont(element) {
+  if (!element || typeof window?.getComputedStyle !== "function") {
+    return "16px sans-serif";
+  }
+
+  const style = window.getComputedStyle(element);
+  const fontStyle = style.fontStyle || "normal";
+  const fontVariant = style.fontVariant || "normal";
+  const fontWeight = style.fontWeight || "400";
+  const fontSize = style.fontSize || "16px";
+  const fontFamily = style.fontFamily || "sans-serif";
+  return `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize} ${fontFamily}`;
+}
+
+function measureTextWidthPx(text, font) {
+  if (!measureTextWidthPx.canvas) {
+    measureTextWidthPx.canvas = document.createElement("canvas");
+  }
+
+  const context = measureTextWidthPx.canvas.getContext("2d");
+  if (!context) {
+    return String(text || "").length * 8;
+  }
+
+  context.font = font;
+  return context.measureText(String(text || "")).width;
+}
+
+function truncateTextToPixelWidth(text, maxWidthPx, font) {
+  const normalizedText = String(text || "");
+  if (!normalizedText) {
+    return "";
+  }
+
+  if (!Number.isFinite(maxWidthPx) || maxWidthPx <= 0) {
+    return normalizedText;
+  }
+
+  if (measureTextWidthPx(normalizedText, font) <= maxWidthPx) {
+    return normalizedText;
+  }
+
+  const ellipsis = "...";
+  const ellipsisWidth = measureTextWidthPx(ellipsis, font);
+  if (ellipsisWidth >= maxWidthPx) {
+    return ellipsis;
+  }
+
+  let low = 0;
+  let high = normalizedText.length;
+  let best = ellipsis;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = `${normalizedText.slice(0, mid).trimEnd()}${ellipsis}`;
+    const candidateWidth = measureTextWidthPx(candidate, font);
+
+    if (candidateWidth <= maxWidthPx) {
+      best = candidate;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return best;
+}
+
+function getSelectLabelMaxWidthPx(selectElement) {
+  if (!selectElement || typeof window?.getComputedStyle !== "function") {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const style = window.getComputedStyle(selectElement);
+  const paddingLeft = Number.parseFloat(style.paddingLeft || "0") || 0;
+  const paddingRight = Number.parseFloat(style.paddingRight || "0") || 0;
+  const fontSize = Number.parseFloat(style.fontSize || "16") || 16;
+  const arrowReserve = Math.max(28, fontSize * 1.8);
+
+  return Math.max(32, selectElement.clientWidth - paddingLeft - paddingRight - arrowReserve);
+}
+
+function formatGuidePromptOptionLabel(promptValue, index, selectElement = null) {
+  const oneLineText = String(promptValue || "")
+    .replace(/\r\n?/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!oneLineText) {
+    return `Prompt ${index + 1}`;
+  }
+
+  const maxWidthPx = getSelectLabelMaxWidthPx(selectElement);
+  const font = buildTextMeasurementFont(selectElement);
+  return truncateTextToPixelWidth(oneLineText, maxWidthPx, font);
+}
+
 async function askGuideForPrompt() {
   if (!shouldAddPromptGuide()) {
     return "";
   }
 
-  const guide = await callGenericPopup(
-    "What to focus on?",
+  const context = getContext();
+  let savedPromptList = readGuidePromptList(context);
+
+  const guidePopupIdSuffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const guidePromptSelectId = `character-details-guide-select-${guidePopupIdSuffix}`;
+  const guidePromptDeleteButtonId = `character-details-guide-delete-${guidePopupIdSuffix}`;
+  const guidePromptPickerWrapperId = `character-details-guide-picker-${guidePopupIdSuffix}`;
+  const guidePromptSaveCheckboxId = `character-details-guide-save-${guidePopupIdSuffix}`;
+  const guidePromptOverwriteCheckboxId = `character-details-guide-overwrite-${guidePopupIdSuffix}`;
+
+  let selectedPromptIndex = -1;
+
+  const buildGuidePromptOptionsHtml = (selectElement = null) => {
+    const options = ['<option value="">none</option>'];
+    for (let index = 0; index < savedPromptList.length; index += 1) {
+      const optionLabel = formatGuidePromptOptionLabel(savedPromptList[index], index, selectElement);
+      options.push(`<option value="${index}">${escapeHtml(optionLabel)}</option>`);
+    }
+
+    return options.join("");
+  };
+
+  const guidePopupContent = `
+    <div class="flex-container flexFlowColumn gap5" style="width:100%; box-sizing:border-box;">
+      <h3>What to focus on?</h3>
+      <div id="${guidePromptPickerWrapperId}" style="${savedPromptList.length ? "display:grid;" : "display:none;"} width:100%; box-sizing:border-box; grid-template-columns:minmax(0, 1fr) auto; column-gap:6px; align-items:center;">
+        <select id="${guidePromptSelectId}" class="text_pole" style="width:100%; min-width:0; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          ${buildGuidePromptOptionsHtml()}
+        </select>
+        <button id="${guidePromptDeleteButtonId}" class="menu_button" type="button" title="Delete selected prompt" style="width:2.5rem; min-width:2.5rem; padding:0; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; line-height:1;">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  `;
+
+  const guidePopup = new Popup(
+    guidePopupContent,
     POPUP_TYPE.INPUT,
     "",
-    { rows: 4, okButton: "Apply", cancelButton: "Cancel" },
+    {
+      rows: 4,
+      okButton: "Apply",
+      cancelButton: "Cancel",
+      customInputs: [
+        {
+          id: guidePromptSaveCheckboxId,
+          label: "Save for this chat",
+          type: "checkbox",
+          defaultState: false,
+        },
+        {
+          id: guidePromptOverwriteCheckboxId,
+          label: "Overwrite",
+          type: "checkbox",
+          defaultState: false,
+        },
+      ],
+      onOpen: (popup) => {
+        const selectElement = popup.dlg.querySelector(`#${guidePromptSelectId}`);
+        const deleteButton = popup.dlg.querySelector(`#${guidePromptDeleteButtonId}`);
+        const pickerWrapper = popup.dlg.querySelector(`#${guidePromptPickerWrapperId}`);
+        const saveCheckbox = popup.dlg.querySelector(`#${guidePromptSaveCheckboxId}`);
+        const overwriteCheckbox = popup.dlg.querySelector(`#${guidePromptOverwriteCheckboxId}`);
+        const saveLabel = saveCheckbox?.closest("label");
+        const overwriteLabel = overwriteCheckbox?.closest("label");
+
+        const alignPickerToInput = () => {
+          if (!pickerWrapper || !popup?.mainInput || !popup?.content || typeof window?.getComputedStyle !== "function") {
+            return;
+          }
+
+          const contentStyle = window.getComputedStyle(popup.content);
+          const inputStyle = window.getComputedStyle(popup.mainInput);
+          const paddingLeftPx = Number.parseFloat(contentStyle.paddingLeft || "0") || 0;
+          const paddingRightPx = Number.parseFloat(contentStyle.paddingRight || "0") || 0;
+          const marginLeftPx = Number.parseFloat(inputStyle.marginLeft || "0") || 0;
+          const marginRightPx = Number.parseFloat(inputStyle.marginRight || "0") || 0;
+          const targetMarginLeftPx = marginLeftPx - paddingLeftPx;
+          const targetMarginRightPx = marginRightPx - paddingRightPx;
+          const widthAdjustmentPx = paddingLeftPx + paddingRightPx - marginLeftPx - marginRightPx;
+
+          pickerWrapper.style.marginLeft = `${targetMarginLeftPx}px`;
+          pickerWrapper.style.marginRight = `${targetMarginRightPx}px`;
+          pickerWrapper.style.width = `calc(100% + ${widthAdjustmentPx}px)`;
+          pickerWrapper.style.maxWidth = `calc(100% + ${widthAdjustmentPx}px)`;
+        };
+
+        const syncGuideControls = () => {
+          const hasSelectedSavedPrompt = selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length;
+
+          if (pickerWrapper) {
+            pickerWrapper.style.display = savedPromptList.length ? "grid" : "none";
+            if (savedPromptList.length) {
+              alignPickerToInput();
+            }
+          }
+
+          if (saveLabel) {
+            saveLabel.classList.toggle("displayNone", hasSelectedSavedPrompt);
+          }
+
+          if (overwriteLabel) {
+            overwriteLabel.classList.toggle("displayNone", !hasSelectedSavedPrompt);
+          }
+
+          if (deleteButton) {
+            deleteButton.disabled = !hasSelectedSavedPrompt;
+            deleteButton.classList.toggle("is-disabled", !hasSelectedSavedPrompt);
+            deleteButton.style.opacity = hasSelectedSavedPrompt ? "" : "0.45";
+            deleteButton.style.cursor = hasSelectedSavedPrompt ? "" : "not-allowed";
+            deleteButton.setAttribute("aria-disabled", hasSelectedSavedPrompt ? "false" : "true");
+            deleteButton.title = hasSelectedSavedPrompt
+              ? "Delete selected prompt"
+              : "Select a saved prompt to delete";
+
+            if (selectElement) {
+              const selectHeight = Math.round(selectElement.getBoundingClientRect().height);
+              if (selectHeight > 0) {
+                deleteButton.style.height = `${selectHeight}px`;
+              }
+            }
+          }
+        };
+
+        const renderSelectOptions = () => {
+          if (!selectElement) {
+            return;
+          }
+
+          selectElement.innerHTML = buildGuidePromptOptionsHtml(selectElement);
+          if (selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length) {
+            selectElement.value = String(selectedPromptIndex);
+          } else {
+            selectElement.value = "";
+            selectedPromptIndex = -1;
+          }
+        };
+
+        syncGuideControls();
+        renderSelectOptions();
+
+        if (selectElement) {
+          selectElement.addEventListener("change", () => {
+            const selectedValue = String(selectElement.value || "").trim();
+            const parsedIndex = selectedValue === "" ? -1 : Number(selectedValue);
+            selectedPromptIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < savedPromptList.length
+              ? parsedIndex
+              : -1;
+
+            if (selectedPromptIndex >= 0) {
+              popup.mainInput.value = savedPromptList[selectedPromptIndex] || "";
+            }
+
+            if (saveCheckbox) {
+              saveCheckbox.checked = false;
+            }
+
+            if (overwriteCheckbox) {
+              overwriteCheckbox.checked = false;
+            }
+
+            syncGuideControls();
+          });
+        }
+
+        if (deleteButton) {
+          deleteButton.addEventListener("click", () => {
+            if (deleteButton.disabled) {
+              return;
+            }
+
+            if (!(selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length)) {
+              return;
+            }
+
+            savedPromptList.splice(selectedPromptIndex, 1);
+            writeGuidePromptList(context, savedPromptList);
+            selectedPromptIndex = -1;
+
+            renderSelectOptions();
+            syncGuideControls();
+          });
+        }
+      },
+      onClosing: (popup) => {
+        if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
+          return true;
+        }
+
+        const guideText = normalizeGuidePromptValue(popup.mainInput.value);
+        const shouldSaveForChat = popup.inputResults?.get(guidePromptSaveCheckboxId) === true;
+        const shouldOverwrite = popup.inputResults?.get(guidePromptOverwriteCheckboxId) === true;
+        const hasSelectedSavedPrompt = selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length;
+
+        if (hasSelectedSavedPrompt) {
+          if (shouldOverwrite && guideText) {
+            savedPromptList[selectedPromptIndex] = guideText;
+            writeGuidePromptList(context, savedPromptList);
+          }
+        } else if (shouldSaveForChat && guideText) {
+          savedPromptList.push(guideText);
+          writeGuidePromptList(context, savedPromptList);
+        }
+
+        return true;
+      },
+    },
   );
+
+  const guide = await guidePopup.show();
 
   if (guide === null || guide === undefined || guide === false) {
     return null;
@@ -2461,6 +2804,24 @@ function applyViewerFromPersona(data, context) {
   }
 }
 
+function getCurrentPersonaSignature(context) {
+  const personaId = getCurrentPersonaId(context);
+  const personaName = normalizeName(context?.name1);
+  return `${personaId}::${personaName}`;
+}
+
+function hasPersonaChanged(context) {
+  const nextSignature = getCurrentPersonaSignature(context);
+  if (lastObservedPersonaSignature === null) {
+    lastObservedPersonaSignature = nextSignature;
+    return false;
+  }
+
+  const changed = nextSignature !== lastObservedPersonaSignature;
+  lastObservedPersonaSignature = nextSignature;
+  return changed;
+}
+
 function applyMainCharacterFromChat(data, context) {
   // Only auto-set MC if not already set
   if (data.mainCharacterId) {
@@ -2984,6 +3345,11 @@ async function handleAddCharacter() {
   newCharacter.name = name;
   state.characters.push(newCharacter);
   state.activeCharacterId = newCharacter.id;
+
+  if (normalizeName(newCharacter.name) && normalizeName(newCharacter.name) === normalizeName(context?.name1)) {
+    state.viewerCharacterId = newCharacter.id;
+  }
+
   saveAndRender();
 }
 
@@ -5422,7 +5788,6 @@ function handlePanelInput(event) {
     const previousName = character.name;
     character.name = sanitizedValue;
     moveUploadedAvatarKey(previousName, character.name);
-    applyViewerFromPersona(state, getContext());
     updateDescriptionsOnly();
     renderFloatingCharacters();
     renderManagerPanel();
@@ -6092,7 +6457,9 @@ function initCharacterDetailsPanel() {
     cleanupModsLocalState(nextContext, extension_settings[extensionName].mods);
     ensureActiveCharacter(state);
     ensureActiveGroups(state);
-    applyViewerFromPersona(state, nextContext);
+    if (hasPersonaChanged(nextContext)) {
+      applyViewerFromPersona(state, nextContext);
+    }
     applyMainCharacterFromChat(state, nextContext);
     saveCharacterDetails(nextContext, state);
     persistDescriptionsForCurrentChat(nextContext, state);
@@ -6161,7 +6528,9 @@ function setCharacterDetailsData(data) {
   if (previousMainId && state.characters.find((c) => c.id === previousMainId)) {
     state.mainCharacterId = previousMainId;
   }
-  applyViewerFromPersona(state, context);
+  if (hasPersonaChanged(context)) {
+    applyViewerFromPersona(state, context);
+  }
   applyMainCharacterFromChat(state, context);
   ensureActiveCharacter(state);
   ensureActiveGroups(state);
