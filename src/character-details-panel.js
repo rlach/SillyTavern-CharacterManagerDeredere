@@ -1077,13 +1077,22 @@ function initializeLeftMobileDrawer() {
   renderLeftDrawerState();
 }
 
-async function maybeCropAvatarDataUrl(dataUrl) {
+function buildAvatarCropPopupTitle(characterName) {
+  const normalizedCharacterName = String(characterName || "").trim();
+  if (!normalizedCharacterName) {
+    return "Set the crop position of the avatar image";
+  }
+
+  return `Set the crop position of the avatar image for ${normalizedCharacterName}`;
+}
+
+async function maybeCropAvatarDataUrl(dataUrl, characterName = "") {
   if (!shouldUseCropToolForAvatars()) {
     return dataUrl;
   }
 
   const croppedImage = await callGenericPopup(
-    "Set the crop position of the avatar image",
+    buildAvatarCropPopupTitle(characterName),
     POPUP_TYPE.CROP,
     "",
     { cropAspect: 1, cropImage: dataUrl },
@@ -3049,7 +3058,7 @@ async function handleUploadCharacterAvatar(character) {
     return;
   }
 
-  dataUrl = await maybeCropAvatarDataUrl(dataUrl);
+  dataUrl = await maybeCropAvatarDataUrl(dataUrl, character?.name);
   if (!dataUrl) {
     return;
   }
@@ -3529,15 +3538,15 @@ async function handleSetAsAvatarClick(event) {
     }
   }
 
-  dataUrl = await maybeCropAvatarDataUrl(dataUrl);
-  if (!dataUrl) {
-    return;
-  }
-  
   const context = getContext();
   const activeCharacter = getActiveCharacter(state);
   if (!activeCharacter) {
     toastr.warning("Select a character first.", "Character Details");
+    return;
+  }
+
+  dataUrl = await maybeCropAvatarDataUrl(dataUrl, activeCharacter.name);
+  if (!dataUrl) {
     return;
   }
   
