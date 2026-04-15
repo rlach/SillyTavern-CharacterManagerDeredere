@@ -1,6 +1,6 @@
 import { getContext, extension_settings } from "../../../../extensions.js";
 
-const extensionName = "st-extension-example";
+const extensionName = "st-charmander";
 
 function shouldUsePlainTextClothingForLlm() {
   return extension_settings?.[extensionName]?.llm_clothing_plain_text === true;

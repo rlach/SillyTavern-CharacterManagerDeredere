@@ -52,7 +52,7 @@ let mobileDrawerBindingsInitialized = false;
 let mobileDrawerLeftBindingsInitialized = false;
 let activeImageGeneration = null;
 let lastObservedPersonaSignature = null;
-const extensionName = "st-extension-example";
+const extensionName = "st-charmander";
 const PERSONA_CHARACTER_STORAGE_KEY = "characterDetailsPersonaCharacters";
 const RIGHT_DRAWER_COMPACT_SETTING_KEY = "right_drawer_compact";
 const COMPACT_EMPTY_FOOTER_MESSAGE = "Enter chat to start managing details.";
@@ -6412,11 +6412,11 @@ function bindEvents() {
   $(document).on("click", "[data-action='set-as-chat-background']", handleSetAsChatBackgroundClick);
   $(document).off("click.stExtensionModsPanel").on("click.stExtensionModsPanel", handleModPanelOutsideClick);
   $(document)
-    .off("st-extension-example:mods-panel-visibility-changed")
-    .on("st-extension-example:mods-panel-visibility-changed", renderModsPanelVisibility);
+    .off("st-charmander:mods-panel-visibility-changed")
+    .on("st-charmander:mods-panel-visibility-changed", renderModsPanelVisibility);
   $(document)
-    .off("st-extension-example:mods-layout-changed")
-    .on("st-extension-example:mods-layout-changed", renderModsPanel);
+    .off("st-charmander:mods-layout-changed")
+    .on("st-charmander:mods-layout-changed", renderModsPanel);
 }
 
 function initCharacterDetailsPanel() {

@@ -3,7 +3,7 @@ import { loadCharacterDetails } from "./character-details-store.js";
 import { buildCharacterVisualDescription, shouldUsePlainTextClothingForLlm } from "./character-details-descriptions.js";
 
 const SYSTEM_MARKER = "[CHARMANDER_CLOTHING_STATE]";
-const extensionName = "st-extension-example";
+const extensionName = "st-charmander";
 const DEFAULT_JSON_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The JSON is the source of truth for what is currently worn.\n- In narration, mention only the outermost visible layers and items with state=partial that are visible.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 const DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The plain-text clothing list is the source of truth for what is currently worn.\n- In narration, mention only currently visible outer layers and partially visible items.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 

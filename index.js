@@ -2,7 +2,7 @@
 // The following are examples of some basic extension functionality
 
 //You'll likely need to import extension_settings, getContext, and loadExtensionSettings from extensions.js
-import { extension_settings, getContext, findExtension } from "../../../extensions.js";
+import { extension_settings, getContext, findExtension, renderExtensionTemplateAsync } from "../../../extensions.js";
 import { initCharacterDetailsPanel } from "./src/character-details-panel.js";
 import { loadCharacterDetails } from "./src/character-details-store.js";
 import { buildGenDescriptions } from "./src/character-details-descriptions.js";
@@ -14,9 +14,7 @@ import { DEFAULT_DESCRIPTIONS_PROMPT } from "./src/character-details-prompts.js"
 import { saveSettingsDebounced } from "../../../../script.js";
 
 // Keep track of where your extension is located, name should match repo name
-const extensionName = "st-extension-example";
-const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-const extensionSettings = extension_settings[extensionName];
+const extensionName = "st-charmander";
 const DEFAULT_JSON_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The JSON is the source of truth for what is currently worn.\n- In narration, mention only the outermost visible layers and items with state=partial that are visible.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 const DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The plain-text clothing list is the source of truth for what is currently worn.\n- In narration, mention only currently visible outer layers and partially visible items.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 const resolutionSelectMappings = [
@@ -26,6 +24,7 @@ const resolutionSelectMappings = [
   { selector: "#custom-resolution-viewer-eyes", key: "viewer_eyes" },
   { selector: "#custom-resolution-scene", key: "scene" },
 ];
+const TEMPLATE_PATH = 'third-party/SillyTavern-CharacterManagerDeredere';
 
 function normalizeSwitcherCharacterLimit(value) {
   const numeric = Number(value);
@@ -762,8 +761,8 @@ function registerSlashCommands() {
 // This function is called when the extension is loaded
 jQuery(async () => {
   // This is an example of loading HTML from a file
-  const settingsHtml = await $.get(`${extensionFolderPath}/example.html`);
-  const panelHtml = await $.get(`${extensionFolderPath}/panel.html`);
+  const settingsHtml = await renderExtensionTemplateAsync(TEMPLATE_PATH, "deredere");
+  const panelHtml = await renderExtensionTemplateAsync(TEMPLATE_PATH, "panel");
 
   // Append settingsHtml to extensions_settings
   // extension_settings and extensions_settings2 are the left and right columns of the settings menu
@@ -785,13 +784,13 @@ jQuery(async () => {
 
   $("#show_mods_panel").on("change", (event) => {
     extension_settings[extensionName].show_mods_panel = Boolean($(event.target).prop("checked"));
-    $(document).trigger("st-extension-example:mods-panel-visibility-changed");
+    $(document).trigger("st-charmander:mods-panel-visibility-changed");
     saveSettingsDebounced();
   });
 
   $("#use_tall_mods_in_desktop_mode").on("change", (event) => {
     extension_settings[extensionName].use_tall_mods_in_desktop_mode = Boolean($(event.target).prop("checked"));
-    $(document).trigger("st-extension-example:mods-layout-changed");
+    $(document).trigger("st-charmander:mods-layout-changed");
     saveSettingsDebounced();
   });
 

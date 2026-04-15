@@ -6,7 +6,7 @@ import { showCharacterDetailsDiff } from "./character-details-diff-modal.js";
 import { buildCharacterVisualDescription } from "./character-details-descriptions.js";
 import { COMPACT_OUTFIT_ONLY_CHANGELOG_SHAPE, DEFAULT_DESCRIPTIONS_PROMPT } from "./character-details-prompts.js";
 
-const extensionName = "st-extension-example";
+const extensionName = "st-charmander";
 let activeDescriptionsGeneration = null;
 const FORBIDDEN_NAME_CHARS = /[\[\]\/|]/g;
 const SHORT_ID_REGEX = /^[a-z0-9]{3}$/i;
