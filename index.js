@@ -2,14 +2,13 @@
 // The following are examples of some basic extension functionality
 
 //You'll likely need to import extension_settings, getContext, and loadExtensionSettings from extensions.js
-import { extension_settings, getContext, loadExtensionSettings, findExtension } from "../../../extensions.js";
+import { extension_settings, getContext, findExtension } from "../../../extensions.js";
 import { initCharacterDetailsPanel } from "./src/character-details-panel.js";
 import { loadCharacterDetails } from "./src/character-details-store.js";
 import { buildGenDescriptions } from "./src/character-details-descriptions.js";
 import { initCharacterDetailsPromptInjector } from "./src/character-details-prompt-injector.js";
 import { IMAGE_RESOLUTION_OPTIONS, DEFAULT_RESOLUTION_OPTION } from "./src/image-resolution-options.js";
 import { DEFAULT_DESCRIPTIONS_PROMPT } from "./src/character-details-prompts.js";
-import { randomizeStats } from "../stat-randomizer/src/stat-randomizer.js";
 
 //You'll likely need to import some other functions from the main script
 import { saveSettingsDebounced } from "../../../../script.js";
