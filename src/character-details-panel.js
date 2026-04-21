@@ -4962,6 +4962,7 @@ async function showModItemEditorPopup({
   okButton,
   shortnameValue = "",
   detailsValue = "",
+  initialPosition = MOD_POSITION_MIDDLE,
   includeGroupName = false,
   initialGroupName = "",
   includeModSettings = true,
@@ -4971,6 +4972,7 @@ async function showModItemEditorPopup({
   let nextGroupName = String(initialGroupName || "").trim();
   let nextShortname = String(shortnameValue || "").trim();
   let nextDetails = String(detailsValue || "").replace(/\r\n?/g, "\n").trim();
+  let nextPosition = normalizeModPosition(initialPosition);
   let nextCharacterMod = initialCharacterMod === true;
   let nextLocalState = initialLocalState === true;
 
@@ -4992,6 +4994,12 @@ async function showModItemEditorPopup({
         label: "Shortname",
         type: "text",
         defaultState: nextShortname,
+      },
+      {
+        id: "st_extension_mod_position",
+        label: "Position",
+        type: "text",
+        defaultState: nextPosition,
       },
       {
         id: "st_extension_mod_details",
@@ -5028,6 +5036,27 @@ async function showModItemEditorPopup({
         cancelButton: "Cancel",
         leftAlign: true,
         customInputs,
+        onOpen: (openedPopup) => {
+          const input = openedPopup?.dlg?.querySelector("#st_extension_mod_position");
+          if (!(input instanceof HTMLInputElement)) {
+            return;
+          }
+
+          const select = document.createElement("select");
+          select.classList.add("text_pole", "result-control");
+          select.id = input.id;
+          select.title = "Mod type";
+
+          for (const definition of MOD_POSITION_DEFINITIONS) {
+            const option = document.createElement("option");
+            option.value = definition.key;
+            option.textContent = definition.label;
+            option.selected = normalizeModPosition(nextPosition) === definition.key;
+            select.append(option);
+          }
+
+          input.replaceWith(select);
+        },
       },
     );
 
@@ -5040,6 +5069,7 @@ async function showModItemEditorPopup({
       ? normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_group_name"))
       : "";
     const shortnameInput = normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_shortname"));
+    const positionInput = normalizeModPosition(popup.inputResults?.get("st_extension_mod_position"));
     const detailsInput = String(popup.inputResults?.get("st_extension_mod_details") || "")
       .replace(/\r\n?/g, "\n")
       .trim();
@@ -5052,6 +5082,7 @@ async function showModItemEditorPopup({
 
     if (includeGroupName && !groupNameInput) {
       toastr.warning("Group name is required.", "Character Details");
+      nextPosition = positionInput;
       nextShortname = shortnameInput;
       nextDetails = detailsInput;
       nextCharacterMod = characterModInput;
@@ -5062,6 +5093,7 @@ async function showModItemEditorPopup({
     if (!shortnameInput) {
       toastr.warning("Shortname is required.", "Character Details");
       nextGroupName = groupNameInput;
+      nextPosition = positionInput;
       nextDetails = detailsInput;
       nextCharacterMod = characterModInput;
       nextLocalState = localStateInput;
@@ -5071,11 +5103,21 @@ async function showModItemEditorPopup({
     return {
       groupName: groupNameInput,
       shortname: shortnameInput,
+      position: positionInput,
       fullContent: detailsInput,
       characterMod: characterModInput,
       localState: localStateInput,
     };
   }
+}
+
+function getDefaultModPositionForCreate() {
+  const filterValue = normalizeModsPanelPositionFilter(modsPanelPositionFilter);
+  if (filterValue === MODS_PANEL_FILTER_ALL) {
+    return MOD_POSITION_MIDDLE;
+  }
+
+  return normalizeModPosition(filterValue);
 }
 
 async function handleAddMod() {
@@ -5084,6 +5126,7 @@ async function handleAddMod() {
     okButton: "Add",
     shortnameValue: "",
     detailsValue: "",
+    initialPosition: getDefaultModPositionForCreate(),
     includeModSettings: true,
     initialCharacterMod: false,
     initialLocalState: false,
@@ -5095,17 +5138,19 @@ async function handleAddMod() {
 
   const mods = getNormalizedModsSettings();
   const characterId = resolveCharacterModAssignment(edited.characterMod === true, "");
+  const position = normalizeModPosition(edited.position);
+  const afterCharName = position === MOD_POSITION_AFTER_CHAR ? getDefaultAfterCharName() : "";
   mods.push({
     id: createModId(),
     type: MOD_ENTRY_TYPE_SINGLE,
     enabled: true,
-    position: MOD_POSITION_MIDDLE,
+    position,
     shortname: edited.shortname,
     fullContent: edited.fullContent,
     imageTypes: createDefaultModImageTypes(),
     stateScope: edited.localState ? MOD_STATE_SCOPE_LOCAL : MOD_STATE_SCOPE_GLOBAL,
     characterId,
-    afterCharName: "",
+    afterCharName,
   });
   saveModsSettings(mods);
 }
@@ -5350,6 +5395,7 @@ async function handleModEntryEdit(actionOwner) {
     okButton: "Save",
     shortnameValue: isModGroup(mod) ? editingGroupItem?.shortname : mod.shortname,
     detailsValue: isModGroup(mod) ? editingGroupItem?.fullContent : mod.fullContent,
+    initialPosition: mod.position,
     includeGroupName: isModGroup(mod),
     initialGroupName: isModGroup(mod) ? mod.groupName : "",
     includeModSettings: true,
@@ -5385,6 +5431,10 @@ async function handleModEntryEdit(actionOwner) {
   }
 
   mod.characterId = resolveCharacterModAssignment(edited.characterMod === true, mod.characterId);
+  mod.position = normalizeModPosition(edited.position);
+  if (mod.position === MOD_POSITION_AFTER_CHAR && !normalizeModAfterCharName(mod.afterCharName)) {
+    mod.afterCharName = getDefaultAfterCharName();
+  }
   mod.stateScope = edited.localState ? MOD_STATE_SCOPE_LOCAL : MOD_STATE_SCOPE_GLOBAL;
 
   if (previousStateScope !== MOD_STATE_SCOPE_LOCAL && mod.stateScope === MOD_STATE_SCOPE_LOCAL) {
