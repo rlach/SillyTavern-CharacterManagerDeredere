@@ -15,6 +15,7 @@ import { saveSettingsDebounced } from "../../../../script.js";
 
 // Keep track of where your extension is located, name should match repo name
 const extensionName = "st-charmander";
+const IMAGE_SETTINGS_CHANGED_EVENT = "st-charmander:image-settings-changed";
 const DEFAULT_JSON_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The JSON is the source of truth for what is currently worn.\n- In narration, mention only the outermost visible layers and items with state=partial that are visible.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 const DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT = "Interpretation for clothing state (authoritative):\n- The plain-text clothing list is the source of truth for what is currently worn.\n- In narration, mention only currently visible outer layers and partially visible items.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 const resolutionSelectMappings = [
@@ -25,6 +26,53 @@ const resolutionSelectMappings = [
   { selector: "#custom-resolution-scene", key: "scene" },
 ];
 const TEMPLATE_PATH = 'third-party/SillyTavern-CharacterManagerDeredere';
+
+function emitImageSettingsChanged() {
+  $(document).trigger(IMAGE_SETTINGS_CHANGED_EVENT);
+}
+
+function normalizeQuickResolutionId(value) {
+  const normalized = String(value || "").trim();
+  return normalized in IMAGE_RESOLUTION_OPTIONS ? normalized : "";
+}
+
+function normalizeQuickResolutionList(values) {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const normalized = [];
+
+  for (const value of source) {
+    const id = normalizeQuickResolutionId(value);
+    if (!id || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+    normalized.push(id);
+  }
+
+  return normalized;
+}
+
+function getQuickResolutionSettings() {
+  return normalizeQuickResolutionList(extension_settings?.[extensionName]?.quick_resolutions);
+}
+
+function buildResolutionOptionsMarkup(selectedValue, { includeDefault = true } = {}) {
+  const options = [];
+
+  if (includeDefault) {
+    const selected = String(selectedValue || DEFAULT_RESOLUTION_OPTION) === DEFAULT_RESOLUTION_OPTION;
+    options.push(`<option value="${DEFAULT_RESOLUTION_OPTION}" ${selected ? "selected" : ""}>default</option>`);
+  }
+
+  for (const [id, resolution] of Object.entries(IMAGE_RESOLUTION_OPTIONS)) {
+    const selected = id === selectedValue;
+    options.push(`<option value="${id}" ${selected ? "selected" : ""}>${escapeHtml(resolution.name)}</option>`);
+  }
+
+  return options.join("");
+}
 
 function normalizeSwitcherCharacterLimit(value) {
   const numeric = Number(value);
@@ -74,6 +122,9 @@ const defaultSettings = {
     viewer_eyes: DEFAULT_RESOLUTION_OPTION,
     scene: DEFAULT_RESOLUTION_OPTION,
   },
+  show_quick_resolution_button: false,
+  quick_resolutions: [],
+  active_quick_resolution: DEFAULT_RESOLUTION_OPTION,
 };
 
 
@@ -112,6 +163,13 @@ async function loadSettings() {
     extension_settings[extensionName].custom_resolutions[key] = value in IMAGE_RESOLUTION_OPTIONS ? value : DEFAULT_RESOLUTION_OPTION;
   }
 
+  extension_settings[extensionName].quick_resolutions = normalizeQuickResolutionList(extension_settings[extensionName].quick_resolutions);
+  extension_settings[extensionName].show_quick_resolution_button = extension_settings[extensionName].show_quick_resolution_button === true;
+  const activeQuickResolution = normalizeQuickResolutionId(extension_settings[extensionName].active_quick_resolution);
+  extension_settings[extensionName].active_quick_resolution = extension_settings[extensionName].quick_resolutions.includes(activeQuickResolution)
+    ? activeQuickResolution
+    : DEFAULT_RESOLUTION_OPTION;
+
   // Updating settings in the UI
   $("#descriptions_prompt").val(extension_settings[extensionName].descriptions_prompt || defaultSettings.descriptions_prompt);
   $("#auto_add_persona_character_for_new_chat").prop("checked", extension_settings[extensionName].auto_add_persona_character_for_new_chat !== false);
@@ -134,11 +192,13 @@ async function loadSettings() {
   $("#describe_background_prompt").val(extension_settings[extensionName].describe_background_prompt || defaultSettings.describe_background_prompt);
   $("#describe_viewer_eyes_prompt").val(extension_settings[extensionName].describe_viewer_eyes_prompt || defaultSettings.describe_viewer_eyes_prompt);
   $("#describe_current_scene_prompt").val(extension_settings[extensionName].describe_current_scene_prompt || defaultSettings.describe_current_scene_prompt);
+  $("#show_quick_resolution_button").prop("checked", extension_settings[extensionName].show_quick_resolution_button === true);
   for (const { selector, key } of resolutionSelectMappings) {
     $(selector).val(extension_settings[extensionName].custom_resolutions[key] || DEFAULT_RESOLUTION_OPTION);
   }
   updateImageGenerationSettingsState();
   renderCustomFieldsSettings();
+  renderQuickResolutionSettings();
 }
 
 function populateCustomResolutionDropdowns() {
@@ -149,17 +209,37 @@ function populateCustomResolutionDropdowns() {
     }
 
     select.empty();
-    select.append('<option value="default">default</option>');
-    for (const [id, resolution] of Object.entries(IMAGE_RESOLUTION_OPTIONS)) {
-      select.append(`<option value="${id}">${resolution.name}</option>`);
-    }
+    select.append(buildResolutionOptionsMarkup(DEFAULT_RESOLUTION_OPTION));
+  }
+}
+
+function renderQuickResolutionSettings() {
+  const list = $("#quick-resolutions-list");
+  if (!list.length) {
+    return;
+  }
+
+  const quickResolutions = getQuickResolutionSettings();
+  list.empty();
+
+  for (const [index, resolutionId] of quickResolutions.entries()) {
+    list.append(`
+      <div class="quick-resolution-row">
+        <select class="text_pole" data-field="quick-resolution" data-index="${index}">
+          ${buildResolutionOptionsMarkup(resolutionId, { includeDefault: false })}
+        </select>
+        <button class="menu_button" type="button" data-action="remove-quick-resolution" data-index="${index}" title="Remove resolution">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    `);
   }
 }
 
 function updateImageGenerationSettingsState() {
   const hasImageGeneration = Boolean(findExtension("stable-diffusion")?.enabled);
   const disabled = !hasImageGeneration;
-  const controls = $("#show_image_generation_buttons, #remove_image_prompt_newlines, #visual_command_start, #closeup_portrait_prompt, #full_body_portrait_prompt, #describe_background_prompt, #describe_viewer_eyes_prompt, #describe_current_scene_prompt, #custom-resolution-portrait, #custom-resolution-fullbody, #custom-resolution-background, #custom-resolution-viewer-eyes, #custom-resolution-scene, #reset-visual-command-start-prompt, #reset-closeup-portrait-prompt, #reset-full-body-portrait-prompt, #reset-describe-background-prompt, #reset-describe-viewer-eyes-prompt, #reset-describe-current-scene-prompt");
+  const controls = $("#show_image_generation_buttons, #remove_image_prompt_newlines, #visual_command_start, #closeup_portrait_prompt, #full_body_portrait_prompt, #describe_background_prompt, #describe_viewer_eyes_prompt, #describe_current_scene_prompt, #custom-resolution-portrait, #custom-resolution-fullbody, #custom-resolution-background, #custom-resolution-viewer-eyes, #custom-resolution-scene, #show_quick_resolution_button, #quick-resolutions-add, #quick-resolutions-list select, #quick-resolutions-list button, #reset-visual-command-start-prompt, #reset-closeup-portrait-prompt, #reset-full-body-portrait-prompt, #reset-describe-background-prompt, #reset-describe-viewer-eyes-prompt, #reset-describe-current-scene-prompt");
   controls.prop("disabled", disabled);
   $("#image-generation-required-note").toggleClass("displayNone", !disabled);
 }
@@ -779,6 +859,7 @@ jQuery(async () => {
 
   $("#show_image_generation_buttons").on("change", (event) => {
     extension_settings[extensionName].show_image_generation_buttons = Boolean($(event.target).prop("checked"));
+    emitImageSettingsChanged();
     saveSettingsDebounced();
   });
 
@@ -835,6 +916,12 @@ jQuery(async () => {
     saveSettingsDebounced();
   });
 
+  $("#show_quick_resolution_button").on("change", (event) => {
+    extension_settings[extensionName].show_quick_resolution_button = Boolean($(event.target).prop("checked"));
+    emitImageSettingsChanged();
+    saveSettingsDebounced();
+  });
+
   $("#visual_command_start").on("input", (event) => {
     extension_settings[extensionName].visual_command_start = $(event.target).val();
     saveSettingsDebounced();
@@ -870,9 +957,67 @@ jQuery(async () => {
       extension_settings[extensionName].custom_resolutions = extension_settings[extensionName].custom_resolutions || { ...defaultSettings.custom_resolutions };
       const nextValue = String($(event.target).val() || DEFAULT_RESOLUTION_OPTION);
       extension_settings[extensionName].custom_resolutions[key] = nextValue in IMAGE_RESOLUTION_OPTIONS ? nextValue : DEFAULT_RESOLUTION_OPTION;
+      emitImageSettingsChanged();
       saveSettingsDebounced();
     });
   }
+
+  $("#quick-resolutions-add").on("click", () => {
+    const quickResolutions = getQuickResolutionSettings();
+    const nextResolutionId = Object.keys(IMAGE_RESOLUTION_OPTIONS).find((id) => !quickResolutions.includes(id)) || Object.keys(IMAGE_RESOLUTION_OPTIONS)[0] || "";
+    if (!nextResolutionId) {
+      return;
+    }
+
+    quickResolutions.push(nextResolutionId);
+    extension_settings[extensionName].quick_resolutions = normalizeQuickResolutionList(quickResolutions);
+    renderQuickResolutionSettings();
+    updateImageGenerationSettingsState();
+    emitImageSettingsChanged();
+    saveSettingsDebounced();
+  });
+
+  $("#quick-resolutions-list").on("change", "select[data-field='quick-resolution']", (event) => {
+    const quickResolutions = getQuickResolutionSettings();
+    const index = Number($(event.target).data("index"));
+    if (!Number.isInteger(index) || index < 0 || index >= quickResolutions.length) {
+      return;
+    }
+
+    quickResolutions[index] = String($(event.target).val() || "");
+    extension_settings[extensionName].quick_resolutions = normalizeQuickResolutionList(quickResolutions);
+
+    const activeQuickResolution = normalizeQuickResolutionId(extension_settings[extensionName].active_quick_resolution);
+    extension_settings[extensionName].active_quick_resolution = extension_settings[extensionName].quick_resolutions.includes(activeQuickResolution)
+      ? activeQuickResolution
+      : DEFAULT_RESOLUTION_OPTION;
+
+    renderQuickResolutionSettings();
+    updateImageGenerationSettingsState();
+    emitImageSettingsChanged();
+    saveSettingsDebounced();
+  });
+
+  $("#quick-resolutions-list").on("click", "[data-action='remove-quick-resolution']", (event) => {
+    const quickResolutions = getQuickResolutionSettings();
+    const index = Number($(event.currentTarget).data("index"));
+    if (!Number.isInteger(index) || index < 0 || index >= quickResolutions.length) {
+      return;
+    }
+
+    quickResolutions.splice(index, 1);
+    extension_settings[extensionName].quick_resolutions = normalizeQuickResolutionList(quickResolutions);
+
+    const activeQuickResolution = normalizeQuickResolutionId(extension_settings[extensionName].active_quick_resolution);
+    extension_settings[extensionName].active_quick_resolution = extension_settings[extensionName].quick_resolutions.includes(activeQuickResolution)
+      ? activeQuickResolution
+      : DEFAULT_RESOLUTION_OPTION;
+
+    renderQuickResolutionSettings();
+    updateImageGenerationSettingsState();
+    emitImageSettingsChanged();
+    saveSettingsDebounced();
+  });
 
   $("#reset-closeup-portrait-prompt").on("click", () => {
     extension_settings[extensionName].closeup_portrait_prompt = defaultSettings.closeup_portrait_prompt;

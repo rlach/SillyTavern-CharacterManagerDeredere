@@ -22,6 +22,9 @@ let footerPortraitButton = null;
 let footerFullBodyButton = null;
 let footerPreviewToggle = null;
 let footerGuideToggle = null;
+let footerQuickResolutionWrap = null;
+let footerQuickResolutionButton = null;
+let footerQuickResolutionMenu = null;
 let footerBackgroundButton = null;
 let footerViewerEyesButton = null;
 let footerSceneButton = null;
@@ -42,7 +45,10 @@ let draggedLayerId = null;
 let draggedModId = null;
 let openModImageTypesForId = null;
 let openModPositionForId = null;
+let openModPositionOpensUpward = false;
 let openModGroupForId = null;
+let openModGroupOpensUpward = false;
+let quickResolutionMenuOpen = false;
 let modsPanelPositionFilter = "all";
 let managerExpanded = false;
 let mobileDrawerOpen = false;
@@ -72,6 +78,7 @@ const MOD_STATE_SCOPE_LOCAL = "local";
 const MODS_LOCAL_STATE_STORAGE_KEY = "characterDetailsModsLocalState";
 const PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID = "character-details-remove-newlines";
 const GUIDE_PROMPTS_LOCAL_STORAGE_KEY = "characterDetailsGuidePrompts";
+const IMAGE_SETTINGS_CHANGED_EVENT = "st-charmander:image-settings-changed";
 const MOD_POSITION_DEFINITIONS = [
   { key: MOD_POSITION_START, label: "Beginning", icon: "fa-hourglass-start" },
   { key: MOD_POSITION_AFTER_CHAR, label: "After char X", icon: "fa-user-tag" },
@@ -103,6 +110,37 @@ function shouldAddPromptGuide() {
   return extension_settings?.[extensionName]?.add_prompt_guide === true;
 }
 
+function normalizeQuickResolutionId(value) {
+  const normalized = String(value || "").trim();
+  return normalized in IMAGE_RESOLUTION_OPTIONS ? normalized : "";
+}
+
+function getConfiguredQuickResolutionIds() {
+  const rawValues = Array.isArray(extension_settings?.[extensionName]?.quick_resolutions)
+    ? extension_settings[extensionName].quick_resolutions
+    : [];
+  const seen = new Set();
+  const normalized = [];
+
+  for (const value of rawValues) {
+    const id = normalizeQuickResolutionId(value);
+    if (!id || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+    normalized.push(id);
+  }
+
+  return normalized;
+}
+
+function shouldShowQuickResolutionButton() {
+  return shouldShowImageGenerationButtons()
+    && extension_settings?.[extensionName]?.show_quick_resolution_button === true
+    && getConfiguredQuickResolutionIds().length > 0;
+}
+
 function shouldUseCropToolForAvatars() {
   return extension_settings?.[extensionName]?.use_crop_tool_for_avatars === true;
 }
@@ -117,6 +155,65 @@ function shouldUseTallModsInDesktopMode() {
 
 function shouldRemoveImagePromptNewlines() {
   return extension_settings?.[extensionName]?.remove_image_prompt_newlines !== false;
+}
+
+function getQuickResolutionIconClass(resolution) {
+  const width = Number(resolution?.width);
+  const height = Number(resolution?.height);
+
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return "fa-image";
+  }
+
+  if (width > height) {
+    return "fa-panorama";
+  }
+
+  if (height > width) {
+    return "fa-image-portrait";
+  }
+
+  return "fa-image";
+}
+
+function getQuickResolutionDisplayLabel(resolutionId) {
+  const preset = IMAGE_RESOLUTION_OPTIONS[resolutionId];
+  if (!preset) {
+    return "";
+  }
+
+  return String(preset.name || `${preset.width}x${preset.height}`).trim();
+}
+
+function getActiveQuickResolutionId() {
+  const configuredIds = getConfiguredQuickResolutionIds();
+  const activeId = normalizeQuickResolutionId(extension_settings?.[extensionName]?.active_quick_resolution);
+  return configuredIds.includes(activeId) ? activeId : DEFAULT_RESOLUTION_OPTION;
+}
+
+function setActiveQuickResolution(resolutionId) {
+  extension_settings[extensionName] = extension_settings[extensionName] || {};
+  const configuredIds = getConfiguredQuickResolutionIds();
+  const normalizedId = normalizeQuickResolutionId(resolutionId);
+  extension_settings[extensionName].active_quick_resolution = configuredIds.includes(normalizedId)
+    ? normalizedId
+    : DEFAULT_RESOLUTION_OPTION;
+  renderQuickResolutionState();
+  saveSettingsDebounced();
+}
+
+function getQuickResolutionOverride() {
+  const activeId = getActiveQuickResolutionId();
+  if (activeId === DEFAULT_RESOLUTION_OPTION) {
+    return null;
+  }
+
+  const preset = IMAGE_RESOLUTION_OPTIONS[activeId];
+  if (!preset || !Number.isFinite(preset.width) || !Number.isFinite(preset.height)) {
+    return null;
+  }
+
+  return { width: preset.width, height: preset.height };
 }
 
 function setRemoveImagePromptNewlines(nextValue) {
@@ -1138,6 +1235,10 @@ function getCustomResolutionForMode(mode) {
   return { width: preset.width, height: preset.height };
 }
 
+function getEffectiveResolutionForMode(mode) {
+  return getQuickResolutionOverride() || getCustomResolutionForMode(mode);
+}
+
 function getPresentCharacters(data, options = {}) {
   const excludeId = options.excludeId || null;
   return (Array.isArray(data?.characters) ? data.characters : [])
@@ -1912,7 +2013,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
       throw new Error("Empty image trigger");
     }
 
-    const customResolution = getCustomResolutionForMode(mode);
+    const customResolution = getEffectiveResolutionForMode(mode);
     const sdCommand = customResolution
       ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerForGenerator}`
       : `/sd ${finalTriggerForGenerator}`;
@@ -2001,7 +2102,7 @@ async function generateFreeImage() {
     return;
   }
 
-  const customResolution = getCustomResolutionForMode("scene");
+  const customResolution = getEffectiveResolutionForMode("scene");
   const sdCommand = customResolution
     ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerForGenerator}`
     : `/sd ${finalTriggerForGenerator}`;
@@ -2041,6 +2142,85 @@ function renderGuideToggleState() {
   icon.removeClass("fa-crosshairs fa-xmark").addClass(isOn ? "fa-crosshairs" : "fa-xmark");
 }
 
+function renderQuickResolutionMenu() {
+  if (!footerQuickResolutionMenu?.length) {
+    return;
+  }
+
+  const configuredIds = getConfiguredQuickResolutionIds();
+  const activeId = getActiveQuickResolutionId();
+  const optionsMarkup = [
+    `
+      <button
+        type="button"
+        class="mod-item__position-option ${activeId === DEFAULT_RESOLUTION_OPTION ? "is-active" : ""}"
+        data-action="set-quick-resolution"
+        data-resolution-id="${DEFAULT_RESOLUTION_OPTION}"
+        title="Disable quick resolution"
+      >
+        <i class="fa-solid fa-ban"></i>
+        <span>Disable</span>
+      </button>
+    `,
+    ...configuredIds.map((resolutionId) => {
+      const preset = IMAGE_RESOLUTION_OPTIONS[resolutionId];
+      const iconClass = getQuickResolutionIconClass(preset);
+      const label = getQuickResolutionDisplayLabel(resolutionId);
+      const selected = resolutionId === activeId;
+
+      return `
+        <button
+          type="button"
+          class="mod-item__position-option ${selected ? "is-active" : ""}"
+          data-action="set-quick-resolution"
+          data-resolution-id="${escapeHtml(resolutionId)}"
+          title="${escapeHtml(label)}"
+        >
+          <i class="fa-solid ${iconClass}"></i>
+          <span>${escapeHtml(label)}</span>
+        </button>
+      `;
+    }),
+  ].join("");
+
+  footerQuickResolutionMenu.html(optionsMarkup);
+
+  const willOpen = quickResolutionMenuOpen && shouldShowQuickResolutionButton();
+  footerQuickResolutionMenu.toggleClass("opens-upward", willOpen && shouldPopupOpenUpward(footerQuickResolutionButton?.[0]));
+  footerQuickResolutionMenu.toggleClass("is-open", willOpen);
+}
+
+function renderQuickResolutionState() {
+  if (!footerQuickResolutionButton?.length || !footerQuickResolutionWrap?.length) {
+    return;
+  }
+
+  const show = shouldShowQuickResolutionButton();
+  const activeId = getActiveQuickResolutionId();
+  const isActive = activeId !== DEFAULT_RESOLUTION_OPTION;
+
+  if (!show) {
+    quickResolutionMenuOpen = false;
+  }
+
+  footerQuickResolutionWrap.toggleClass("displayNone", !show);
+  footerQuickResolutionButton.toggleClass("is-on", isActive);
+  footerQuickResolutionButton.attr(
+    "title",
+    isActive ? `Quick resolution: ${getQuickResolutionDisplayLabel(activeId)}` : "Quick resolution disabled",
+  );
+  renderQuickResolutionMenu();
+}
+
+function toggleQuickResolutionMenu() {
+  if (!shouldShowQuickResolutionButton()) {
+    return;
+  }
+
+  quickResolutionMenuOpen = !quickResolutionMenuOpen;
+  renderQuickResolutionMenu();
+}
+
 function updateFooterImageButtonsVisibility() {
   const show = shouldShowImageGenerationButtons();
   if (footerPreviewToggle?.length) {
@@ -2048,6 +2228,9 @@ function updateFooterImageButtonsVisibility() {
   }
   if (footerGuideToggle?.length) {
     footerGuideToggle.toggleClass("displayNone", !show);
+  }
+  if (footerQuickResolutionWrap?.length) {
+    footerQuickResolutionWrap.toggleClass("displayNone", !shouldShowQuickResolutionButton());
   }
   if (footerFreeGenerateButton?.length) {
     footerFreeGenerateButton.toggleClass("displayNone", !show);
@@ -2067,6 +2250,7 @@ function updateFooterImageButtonsVisibility() {
   if (footerSceneButton?.length) {
     footerSceneButton.toggleClass("displayNone", !show);
   }
+  renderQuickResolutionState();
 }
 
 function escapeHtml(value) {
@@ -4621,7 +4805,7 @@ function renderModsPanel() {
             <span class="mod-item__group-trigger-label">${escapeHtml(displayedShortname)}</span>
             <i class="fa-solid fa-chevron-down"></i>
           </button>
-          <div class="mod-item__group-popup ${groupPopupOpen ? "is-open" : ""}">
+          <div class="mod-item__group-popup ${groupPopupOpen ? "is-open" : ""} ${groupPopupOpen && openModGroupOpensUpward ? "opens-upward" : ""}">
             ${groupOptions}
           </div>
         </div>
@@ -4725,7 +4909,7 @@ function renderModsPanel() {
               >
                 <i class="fa-solid ${positionDefinition.icon}"></i>
               </button>
-              <div class="mod-item__position-popup ${positionPopupOpen ? "is-open" : ""}">
+              <div class="mod-item__position-popup ${positionPopupOpen ? "is-open" : ""} ${positionPopupOpen && openModPositionOpensUpward ? "opens-upward" : ""}">
                 ${positionOptions}
               </div>
             </div>
@@ -4803,7 +4987,7 @@ function renderModsPanel() {
           >
             <i class="fa-solid ${positionDefinition.icon}"></i>
           </button>
-          <div class="mod-item__position-popup ${positionPopupOpen ? "is-open" : ""}">
+          <div class="mod-item__position-popup ${positionPopupOpen ? "is-open" : ""} ${positionPopupOpen && openModPositionOpensUpward ? "opens-upward" : ""}">
             ${positionOptions}
           </div>
         </div>
@@ -5200,8 +5384,16 @@ function handleModPositionMenuToggle(actionOwner) {
 
   openModImageTypesForId = null;
   openModGroupForId = null;
-  openModPositionForId = openModPositionForId === modId ? null : modId;
+  const willOpen = openModPositionForId !== modId;
+  openModPositionForId = willOpen ? modId : null;
+  openModPositionOpensUpward = willOpen ? shouldPopupOpenUpward(actionOwner) : false;
   renderModsPanel();
+}
+
+function shouldPopupOpenUpward(triggerEl) {
+  if (!triggerEl) return false;
+  const rect = triggerEl.getBoundingClientRect();
+  return rect.bottom > window.innerHeight * 0.6;
 }
 
 function handleModGroupMenuToggle(actionOwner) {
@@ -5212,7 +5404,9 @@ function handleModGroupMenuToggle(actionOwner) {
 
   openModImageTypesForId = null;
   openModPositionForId = null;
-  openModGroupForId = openModGroupForId === modId ? null : modId;
+  const willOpen = openModGroupForId !== modId;
+  openModGroupForId = willOpen ? modId : null;
+  openModGroupOpensUpward = willOpen ? shouldPopupOpenUpward(actionOwner) : false;
   renderModsPanel();
 }
 
@@ -6412,6 +6606,13 @@ function bindEvents() {
     renderGuideToggleState();
     saveSettingsDebounced();
   });
+  footerQuickResolutionButton.on("click", toggleQuickResolutionMenu);
+  footerRoot.on("click", "[data-action='set-quick-resolution']", (event) => {
+    const resolutionId = String($(event.currentTarget).data("resolutionId") || DEFAULT_RESOLUTION_OPTION);
+    setActiveQuickResolution(resolutionId);
+    quickResolutionMenuOpen = false;
+    renderQuickResolutionState();
+  });
   footerFreeGenerateButton.on("click", generateFreeImage);
   footerPortraitButton.on("click", (event) => generateCharacterImage("portrait", $(event.currentTarget)));
   footerFullBodyButton.on("click", (event) => generateCharacterImage("fullbody", $(event.currentTarget)));
@@ -6461,12 +6662,30 @@ function bindEvents() {
   $(document).on("click", "[data-action='set-as-avatar']", handleSetAsAvatarClick);
   $(document).on("click", "[data-action='set-as-chat-background']", handleSetAsChatBackgroundClick);
   $(document).off("click.stExtensionModsPanel").on("click.stExtensionModsPanel", handleModPanelOutsideClick);
+  $(document).off("click.stExtensionQuickResolution").on("click.stExtensionQuickResolution", (event) => {
+    if (!quickResolutionMenuOpen) {
+      return;
+    }
+
+    if (event.target?.closest?.(".character-details-footer__quick-resolution-wrap")) {
+      return;
+    }
+
+    quickResolutionMenuOpen = false;
+    renderQuickResolutionMenu();
+  });
   $(document)
     .off("st-charmander:mods-panel-visibility-changed")
     .on("st-charmander:mods-panel-visibility-changed", renderModsPanelVisibility);
   $(document)
     .off("st-charmander:mods-layout-changed")
     .on("st-charmander:mods-layout-changed", renderModsPanel);
+  $(document)
+    .off(IMAGE_SETTINGS_CHANGED_EVENT)
+    .on(IMAGE_SETTINGS_CHANGED_EVENT, () => {
+      renderQuickResolutionState();
+      updateFooterImageButtonsVisibility();
+    });
 }
 
 function initCharacterDetailsPanel() {
@@ -6489,6 +6708,9 @@ function initCharacterDetailsPanel() {
   footerFullBodyButton = $("#character-details-fullbody");
   footerPreviewToggle = $("#character-details-preview-prompts");
   footerGuideToggle = $("#character-details-add-guide");
+  footerQuickResolutionWrap = $("#character-details-quick-resolution-wrap");
+  footerQuickResolutionButton = $("#character-details-quick-resolution");
+  footerQuickResolutionMenu = $("#character-details-quick-resolution-menu");
   footerBackgroundButton = $("#character-details-background");
   footerViewerEyesButton = $("#character-details-viewer-eyes");
   footerSceneButton = $("#character-details-scene");
@@ -6515,6 +6737,7 @@ function initCharacterDetailsPanel() {
     persistDescriptionsForCurrentChat(nextContext, state);
     renderPreviewToggleState();
     renderGuideToggleState();
+    renderQuickResolutionState();
     updateFooterImageButtonsVisibility();
     renderModsPanelVisibility();
     renderPanel();

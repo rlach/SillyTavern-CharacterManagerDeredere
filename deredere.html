@@ -23,7 +23,7 @@
                 <div class="custom-fields-settings">
                     <div class="custom-fields-settings__title">Additional fields</div>
                     <div id="custom-fields-list" class="custom-fields-list"></div>
-                    <button id="custom-fields-add" class="menu_button" type="button">Add field</button>
+                    <button id="custom-fields-add" class="menu_button custom-fields-settings__add-button" type="button"><i class="fa-solid fa-plus"></i><span>Add field</span></button>
                 </div>
             </div>
 
@@ -153,6 +153,12 @@
                         <span>Current scene</span>
                         <select id="custom-resolution-scene" class="text_pole"></select>
                     </label>
+                    <label class="checkbox_label" for="show_quick_resolution_button">
+                        <input id="show_quick_resolution_button" type="checkbox" />
+                        <span>Add quick resolution button</span>
+                    </label>
+                    <div id="quick-resolutions-list" class="custom-fields-list"></div>
+                    <button id="quick-resolutions-add" class="menu_button custom-fields-settings__add-button" type="button"><i class="fa-solid fa-plus"></i><span>Add resolution</span></button>
                 </div>
             </div>
 
