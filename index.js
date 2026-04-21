@@ -3,7 +3,8 @@
 
 //You'll likely need to import extension_settings, getContext, and loadExtensionSettings from extensions.js
 import { extension_settings, getContext, findExtension, renderExtensionTemplateAsync } from "../../../extensions.js";
-import { initCharacterDetailsPanel } from "./src/character-details-panel.js";
+import { initCharacterDetailsPanel, getCharacterDetailsState } from "./src/character-details-panel.js";
+import { initModPanel } from "./src/character-details-mod-panel.js";
 import { loadCharacterDetails } from "./src/character-details-store.js";
 import { buildGenDescriptions } from "./src/character-details-descriptions.js";
 import { initCharacterDetailsPromptInjector } from "./src/character-details-prompt-injector.js";
@@ -1100,6 +1101,7 @@ jQuery(async () => {
   registerCharacterDetailsCharVarMacros();
 
   initCharacterDetailsPanel();
+  initModPanel({ getState: getCharacterDetailsState });
   initCharacterDetailsPromptInjector();
 
   const ctx = getContext();
