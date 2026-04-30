@@ -2,6 +2,31 @@ export function normalizeName(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+const AFTER_CHAR_MACRO_TO_ID_FIELD = {
+  "{{mc}}": "mainCharacterId",
+  "{{selected}}": "activeCharacterId",
+  "{{viewer}}": "viewerCharacterId",
+};
+
+export function normalizeAfterCharMacro(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+export function isSupportedAfterCharMacro(value) {
+  const normalized = normalizeAfterCharMacro(value);
+  return Object.prototype.hasOwnProperty.call(AFTER_CHAR_MACRO_TO_ID_FIELD, normalized);
+}
+
+function findCharacterById(data, characterId) {
+  const normalizedCharacterId = String(characterId || "").trim();
+  if (!normalizedCharacterId) {
+    return null;
+  }
+
+  return (Array.isArray(data?.characters) ? data.characters : [])
+    .find((character) => String(character?.id || "").trim() === normalizedCharacterId) || null;
+}
+
 export function compactWhitespace(value) {
   return String(value || "")
     .replace(/\r\n?/g, "\n")
@@ -22,6 +47,11 @@ export function findCharacterByName(data, nameValue) {
   const normalized = normalizeName(nameValue);
   if (!normalized) {
     return null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(AFTER_CHAR_MACRO_TO_ID_FIELD, normalized)) {
+    const idField = AFTER_CHAR_MACRO_TO_ID_FIELD[normalized];
+    return findCharacterById(data, data?.[idField]);
   }
 
   return (Array.isArray(data?.characters) ? data.characters : [])

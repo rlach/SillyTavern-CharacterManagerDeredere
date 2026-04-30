@@ -9,6 +9,7 @@ import {
 } from "./character-details-mod-local-state.js";
 import {
   findCharacterByName,
+  isSupportedAfterCharMacro,
   escapeHtml,
   shouldPopupOpenUpward,
 } from "./character-details-shared-utils.js";
@@ -467,7 +468,9 @@ export function renderModsPanel() {
     const stateScopeLabel = mod.stateScope === MOD_STATE_SCOPE_LOCAL ? "local" : "global";
     const afterCharName = normalizeModAfterCharName(mod.afterCharName);
     const afterCharMatch = findCharacterByName(state, afterCharName);
-    const afterCharInvalid = position === MOD_POSITION_AFTER_CHAR && !afterCharMatch;
+    const afterCharInvalid = position === MOD_POSITION_AFTER_CHAR
+      && !afterCharMatch
+      && !isSupportedAfterCharMacro(afterCharName);
 
     const typeButtons = MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => {
       const typeEnabled = mod.imageTypes?.[definition.key] !== false;
@@ -1218,7 +1221,8 @@ export function handleModPanelInput(event) {
   mods[index].afterCharName = normalizeModAfterCharName(target.value);
   saveModsSettings(mods, { rerender: false });
 
-  const isValid = Boolean(findCharacterByName(_getState?.(), mods[index].afterCharName));
+  const isValid = Boolean(findCharacterByName(_getState?.(), mods[index].afterCharName))
+    || isSupportedAfterCharMacro(mods[index].afterCharName);
   target.classList.toggle("is-invalid", !isValid);
   target.setAttribute("title", isValid ? "Character name for after-char mod" : "Character not found in this chat");
 }
