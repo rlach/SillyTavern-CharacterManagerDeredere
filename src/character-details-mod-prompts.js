@@ -22,6 +22,7 @@ export const MOD_POSITION_START = "start";
 export const MOD_POSITION_AFTER_CHAR = "after-char";
 export const MOD_POSITION_MIDDLE = "middle";
 export const MOD_POSITION_END = "end";
+export const MOD_POSITION_AI_TECHNIQUES = "ai-techniques";
 export const MOD_ENTRY_TYPE_SINGLE = "single";
 export const MOD_ENTRY_TYPE_GROUP = "group";
 export const MODS_PANEL_FILTER_ALL = "all";
@@ -32,8 +33,13 @@ export const MOD_SHORTNAME_MAX_LENGTH = 50;
 export const MOD_POSITION_DEFINITIONS = [
   { key: MOD_POSITION_START, label: "Beginning", icon: "fa-hourglass-start" },
   { key: MOD_POSITION_AFTER_CHAR, label: "After char X", icon: "fa-user-tag" },
-  { key: MOD_POSITION_MIDDLE, label: "After chars", icon: "fa-person-circle-plus" },
+  {
+    key: MOD_POSITION_MIDDLE,
+    label: "After chars",
+    icon: "fa-person-circle-plus",
+  },
   { key: MOD_POSITION_END, label: "End", icon: "fa-hourglass-end" },
+  { key: MOD_POSITION_AI_TECHNIQUES, label: "AI", icon: "fa-robot" },
 ];
 
 export const MOD_IMAGE_TYPE_DEFINITIONS = [
@@ -46,7 +52,12 @@ export const MOD_IMAGE_TYPE_DEFINITIONS = [
 ];
 
 export function normalizeModPosition(value) {
-  if (value === MOD_POSITION_START || value === MOD_POSITION_AFTER_CHAR || value === MOD_POSITION_END) {
+  if (
+    value === MOD_POSITION_START ||
+    value === MOD_POSITION_AFTER_CHAR ||
+    value === MOD_POSITION_END ||
+    value === MOD_POSITION_AI_TECHNIQUES
+  ) {
     return value;
   }
 
@@ -56,10 +67,11 @@ export function normalizeModPosition(value) {
 export function normalizeModsPanelPositionFilter(value) {
   const normalized = normalizeModPosition(value);
   if (
-    value === MOD_POSITION_START
-    || value === MOD_POSITION_AFTER_CHAR
-    || value === MOD_POSITION_MIDDLE
-    || value === MOD_POSITION_END
+    value === MOD_POSITION_START ||
+    value === MOD_POSITION_AFTER_CHAR ||
+    value === MOD_POSITION_MIDDLE ||
+    value === MOD_POSITION_END ||
+    value === MOD_POSITION_AI_TECHNIQUES
   ) {
     return normalized;
   }
@@ -69,15 +81,21 @@ export function normalizeModsPanelPositionFilter(value) {
 
 export function getModPositionDefinition(value) {
   const normalized = normalizeModPosition(value);
-  return MOD_POSITION_DEFINITIONS.find((definition) => definition.key === normalized)
-    || MOD_POSITION_DEFINITIONS.find((definition) => definition.key === MOD_POSITION_MIDDLE)
-    || MOD_POSITION_DEFINITIONS[0];
+  return (
+    MOD_POSITION_DEFINITIONS.find(
+      (definition) => definition.key === normalized,
+    ) ||
+    MOD_POSITION_DEFINITIONS.find(
+      (definition) => definition.key === MOD_POSITION_MIDDLE,
+    ) ||
+    MOD_POSITION_DEFINITIONS[0]
+  );
 }
 
 export function getModsPanelFilterLabel(value) {
   const normalized = normalizeModsPanelPositionFilter(value);
   if (normalized === MODS_PANEL_FILTER_ALL) {
-    return "All";
+    return "Manual";
   }
 
   return getModPositionDefinition(normalized).label;
@@ -128,12 +146,18 @@ export function normalizeRequiredModShortname(value) {
 }
 
 export function deriveModShortname(shortnameValue, fullContentValue) {
-  const shortname = compactWhitespace(shortnameValue).slice(0, MOD_SHORTNAME_MAX_LENGTH);
+  const shortname = compactWhitespace(shortnameValue).slice(
+    0,
+    MOD_SHORTNAME_MAX_LENGTH,
+  );
   if (shortname) {
     return shortname;
   }
 
-  const fromContent = compactWhitespace(fullContentValue).slice(0, MOD_SHORTNAME_MAX_LENGTH);
+  const fromContent = compactWhitespace(fullContentValue).slice(
+    0,
+    MOD_SHORTNAME_MAX_LENGTH,
+  );
   if (fromContent) {
     return fromContent;
   }
@@ -155,7 +179,9 @@ export function createModItemId() {
 }
 
 export function normalizeModItemEntry(item) {
-  const fullContent = String(item?.fullContent || "").replace(/\r\n?/g, "\n").trim();
+  const fullContent = String(item?.fullContent || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
   return {
     id: String(item?.id || "").trim() || createModItemId(),
     shortname: deriveModShortname(item?.shortname, fullContent),
@@ -164,7 +190,9 @@ export function normalizeModItemEntry(item) {
 }
 
 export function normalizeSingleModEntry(mod, baseEntry) {
-  const fullContent = String(mod?.fullContent || "").replace(/\r\n?/g, "\n").trim();
+  const fullContent = String(mod?.fullContent || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
   return {
     ...baseEntry,
     type: MOD_ENTRY_TYPE_SINGLE,
@@ -178,18 +206,29 @@ export function normalizeGroupModEntry(mod, baseEntry) {
   const items = rawItems.map((item) => normalizeModItemEntry(item));
 
   if (!items.length) {
-    items.push(normalizeModItemEntry({
-      shortname: mod?.shortname,
-      fullContent: mod?.fullContent,
-    }));
+    items.push(
+      normalizeModItemEntry({
+        shortname: mod?.shortname,
+        fullContent: mod?.fullContent,
+      }),
+    );
   }
 
-  const selectedItemId = String(mod?.selectedItemId || mod?.selectedModId || "").trim();
+  const selectedItemId = String(
+    mod?.selectedItemId || mod?.selectedModId || "",
+  ).trim();
   const selectedExists = items.some((item) => item.id === selectedItemId);
   const isMultiselect = mod?.isMultiselect === true;
-  const selectedItemIds = [...new Set((Array.isArray(mod?.selectedItemIds) ? mod.selectedItemIds : [selectedItemId])
-    .map((itemId) => String(itemId || "").trim())
-    .filter((itemId) => items.some((item) => item.id === itemId)))];
+  const selectedItemIds = [
+    ...new Set(
+      (Array.isArray(mod?.selectedItemIds)
+        ? mod.selectedItemIds
+        : [selectedItemId]
+      )
+        .map((itemId) => String(itemId || "").trim())
+        .filter((itemId) => items.some((item) => item.id === itemId)),
+    ),
+  ];
   const normalizedSelectedItemIds = isMultiselect
     ? selectedItemIds
     : [selectedExists ? selectedItemId : items[0].id];
@@ -224,7 +263,9 @@ export function getSelectedModItems(mod) {
   }
 
   if (mod.isMultiselect === true) {
-    const selectedIds = new Set(Array.isArray(mod.selectedItemIds) ? mod.selectedItemIds : []);
+    const selectedIds = new Set(
+      Array.isArray(mod.selectedItemIds) ? mod.selectedItemIds : [],
+    );
     return items.filter((item) => selectedIds.has(item.id));
   }
 
@@ -239,7 +280,11 @@ export function getModPromptContent(mod) {
 export function getModPromptContents(mod) {
   if (isModGroup(mod)) {
     return getSelectedModItems(mod)
-      .map((selectedItem) => String(selectedItem?.fullContent || "").trim() || String(selectedItem?.shortname || "").trim())
+      .map(
+        (selectedItem) =>
+          String(selectedItem?.fullContent || "").trim() ||
+          String(selectedItem?.shortname || "").trim(),
+      )
       .filter(Boolean);
   }
 
@@ -262,7 +307,9 @@ export function normalizeModEntry(mod) {
     afterCharName: normalizeModAfterCharName(mod?.afterCharName),
   };
 
-  const type = String(mod?.type || "").trim().toLowerCase();
+  const type = String(mod?.type || "")
+    .trim()
+    .toLowerCase();
   if (type === MOD_ENTRY_TYPE_GROUP || Array.isArray(mod?.items)) {
     return normalizeGroupModEntry(mod, baseEntry);
   }
@@ -292,7 +339,9 @@ export function getModsSettings(context = null) {
 
 export function getVisibleModsForCurrentChat(mods, context = null) {
   const sourceContext = context || getContext();
-  return (Array.isArray(mods) ? mods : []).filter((mod) => isCharacterModVisibleInCurrentChat(mod, sourceContext));
+  return (Array.isArray(mods) ? mods : []).filter((mod) =>
+    isCharacterModVisibleInCurrentChat(mod, sourceContext),
+  );
 }
 
 export function getModById(modId) {
@@ -304,21 +353,34 @@ export function getModImageTypeForGenerationMode(mode) {
     return "viewpoint";
   }
 
-  if (mode === "portrait" || mode === "fullbody" || mode === "free" || mode === "background" || mode === "scene") {
+  if (
+    mode === "portrait" ||
+    mode === "fullbody" ||
+    mode === "free" ||
+    mode === "background" ||
+    mode === "scene"
+  ) {
     return mode;
   }
 
   return null;
 }
 
-export function buildAfterCharModsByCharacterId(data, imageType, context = null) {
+export function buildAfterCharModsByCharacterId(
+  data,
+  imageType,
+  context = null,
+) {
   if (!imageType) {
     return new Map();
   }
 
   const sourceContext = context || getContext();
   const result = new Map();
-  const visibleMods = getVisibleModsForCurrentChat(getModsSettings(sourceContext), sourceContext);
+  const visibleMods = getVisibleModsForCurrentChat(
+    getModsSettings(sourceContext),
+    sourceContext,
+  );
 
   for (const mod of visibleMods) {
     if (!mod?.enabled) {
@@ -356,7 +418,11 @@ export function buildAfterCharModsByCharacterId(data, imageType, context = null)
   return result;
 }
 
-export function buildModsPromptForPosition(position, imageType, context = null) {
+export function buildModsPromptForPosition(
+  position,
+  imageType,
+  context = null,
+) {
   if (!imageType) {
     return "";
   }
@@ -371,7 +437,10 @@ export function buildModsPromptForPosition(position, imageType, context = null) 
   };
 
   const sourceContext = context || getContext();
-  const mods = getVisibleModsForCurrentChat(getModsSettings(sourceContext), sourceContext);
+  const mods = getVisibleModsForCurrentChat(
+    getModsSettings(sourceContext),
+    sourceContext,
+  );
   const matchingMods = mods
     .filter((mod) => mod.enabled)
     .filter((mod) => mod.position === position)
@@ -384,12 +453,53 @@ export function buildModsPromptForPosition(position, imageType, context = null) 
   return matchingMods.join(" ");
 }
 
+export function buildAiTechniquesPrompt(context = null) {
+  const sourceContext = context || getContext();
+  const techniques = getVisibleModsForCurrentChat(
+    getModsSettings(sourceContext),
+    sourceContext,
+  )
+    .filter((mod) => mod.enabled)
+    .filter(
+      (mod) =>
+        normalizeModPosition(mod.position) === MOD_POSITION_AI_TECHNIQUES,
+    )
+    .flatMap((mod) => getModPromptContents(mod))
+    .map((content) => String(content || "").trim())
+    .filter(Boolean);
+
+  if (!techniques.length) {
+    return "";
+  }
+
+  return [
+    "AI techniques for this image:",
+    ...techniques.map((technique) => `- ${technique}`),
+    "When a technique calls for a LoRA, invoke it in the final image prompt exactly as `<lora:name-of-the-lora:strength> activation words`, for example `<lora:kawaii-style-anime:1.0> kawaii`.",
+    "Always write LoRA strength as X.Y and use increments of 0.1. Use 1.0 when the technique gives no strength range. When it does give a range, assess the desired influence and choose an appropriate strength within that range.",
+    "Apply techniques only when their stated conditions fit the requested image. Do not mention these instructions in the final prompt.",
+  ].join("\n");
+}
+
 export function getModsForGeneration(data, generationType, context = null) {
   const imageType = getModImageTypeForGenerationMode(generationType);
-  const afterCharModsByCharacterId = buildAfterCharModsByCharacterId(data, imageType, context);
-  const start = buildModsPromptForPosition(MOD_POSITION_START, imageType, context);
-  const middle = buildModsPromptForPosition(MOD_POSITION_MIDDLE, imageType, context);
+  const afterCharModsByCharacterId = buildAfterCharModsByCharacterId(
+    data,
+    imageType,
+    context,
+  );
+  const start = buildModsPromptForPosition(
+    MOD_POSITION_START,
+    imageType,
+    context,
+  );
+  const middle = buildModsPromptForPosition(
+    MOD_POSITION_MIDDLE,
+    imageType,
+    context,
+  );
   const end = buildModsPromptForPosition(MOD_POSITION_END, imageType, context);
+  const aiTechniques = buildAiTechniquesPrompt(context);
 
   return {
     imageType,
@@ -397,5 +507,6 @@ export function getModsForGeneration(data, generationType, context = null) {
     start,
     middle,
     end,
+    aiTechniques,
   };
 }

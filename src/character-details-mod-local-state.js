@@ -16,7 +16,9 @@ export function createDefaultModsLocalState() {
 
 export function readModsLocalState(context) {
   const sourceContext = context || getContext();
-  const raw = sourceContext?.variables?.local?.get?.(MODS_LOCAL_STATE_STORAGE_KEY);
+  const raw = sourceContext?.variables?.local?.get?.(
+    MODS_LOCAL_STATE_STORAGE_KEY,
+  );
   if (!raw) {
     return createDefaultModsLocalState();
   }
@@ -46,11 +48,17 @@ export function readModsLocalState(context) {
     enabledByModId[normalizedModId] = value === true;
   }
 
-  for (const [modId, value] of Object.entries(parsed.selectedItemByGroupModId || {})) {
+  for (const [modId, value] of Object.entries(
+    parsed.selectedItemByGroupModId || {},
+  )) {
     const normalizedModId = String(modId || "").trim();
-    const normalizedItemIds = [...new Set((Array.isArray(value) ? value : [value])
-      .map((itemId) => String(itemId || "").trim())
-      .filter(Boolean))];
+    const normalizedItemIds = [
+      ...new Set(
+        (Array.isArray(value) ? value : [value])
+          .map((itemId) => String(itemId || "").trim())
+          .filter(Boolean),
+      ),
+    ];
     if (!normalizedModId) {
       continue;
     }
@@ -70,11 +78,15 @@ export function readModsLocalState(context) {
 
 export function writeModsLocalState(context, stateValue) {
   const sourceContext = context || getContext();
-  const nextState = stateValue && typeof stateValue === "object"
-    ? stateValue
-    : createDefaultModsLocalState();
+  const nextState =
+    stateValue && typeof stateValue === "object"
+      ? stateValue
+      : createDefaultModsLocalState();
 
-  sourceContext?.variables?.local?.set?.(MODS_LOCAL_STATE_STORAGE_KEY, nextState);
+  sourceContext?.variables?.local?.set?.(
+    MODS_LOCAL_STATE_STORAGE_KEY,
+    nextState,
+  );
 }
 
 export function getCurrentChatCharacterCardId(context = null) {
@@ -101,8 +113,12 @@ export function cleanupModsLocalState(context, mods) {
   const sourceContext = context || getContext();
   const localState = readModsLocalState(sourceContext);
   const normalizedMods = Array.isArray(mods) ? mods : [];
-  const localMods = normalizedMods.filter((mod) => mod?.stateScope === MOD_STATE_SCOPE_LOCAL);
-  const localModIds = new Set(localMods.map((mod) => String(mod?.id || "").trim()).filter(Boolean));
+  const localMods = normalizedMods.filter(
+    (mod) => mod?.stateScope === MOD_STATE_SCOPE_LOCAL,
+  );
+  const localModIds = new Set(
+    localMods.map((mod) => String(mod?.id || "").trim()).filter(Boolean),
+  );
   let changed = false;
 
   for (const modId of Object.keys(localState.enabledByModId)) {
@@ -139,13 +155,23 @@ export function cleanupModsLocalState(context, mods) {
       continue;
     }
 
-    const selectedItemIds = (Array.isArray(localState.selectedItemByGroupModId[modId])
-      ? localState.selectedItemByGroupModId[modId]
-      : [localState.selectedItemByGroupModId[modId]])
+    const selectedItemIds = (
+      Array.isArray(localState.selectedItemByGroupModId[modId])
+        ? localState.selectedItemByGroupModId[modId]
+        : [localState.selectedItemByGroupModId[modId]]
+    )
       .map((itemId) => String(itemId || "").trim())
-      .filter((itemId) => items.some((item) => String(item?.id || "").trim() === itemId));
-    const normalizedItemIds = mod.isMultiselect === true ? selectedItemIds : [selectedItemIds[0] || firstItemId];
-    if (JSON.stringify(localState.selectedItemByGroupModId[modId]) !== JSON.stringify(normalizedItemIds)) {
+      .filter((itemId) =>
+        items.some((item) => String(item?.id || "").trim() === itemId),
+      );
+    const normalizedItemIds =
+      mod.isMultiselect === true
+        ? selectedItemIds
+        : [selectedItemIds[0] || firstItemId];
+    if (
+      JSON.stringify(localState.selectedItemByGroupModId[modId]) !==
+      JSON.stringify(normalizedItemIds)
+    ) {
       localState.selectedItemByGroupModId[modId] = normalizedItemIds;
       changed = true;
     }
@@ -160,9 +186,10 @@ export function cleanupModsLocalState(context, mods) {
 
 export function applyLocalModsState(mods, localState) {
   const normalizedMods = Array.isArray(mods) ? mods : [];
-  const stateValue = localState && typeof localState === "object"
-    ? localState
-    : createDefaultModsLocalState();
+  const stateValue =
+    localState && typeof localState === "object"
+      ? localState
+      : createDefaultModsLocalState();
 
   return normalizedMods.map((mod) => {
     if (!mod || mod.stateScope !== MOD_STATE_SCOPE_LOCAL) {
@@ -172,22 +199,38 @@ export function applyLocalModsState(mods, localState) {
     const modId = String(mod.id || "").trim();
     const effective = { ...mod };
 
-    if (Object.prototype.hasOwnProperty.call(stateValue.enabledByModId, modId)) {
+    if (
+      Object.prototype.hasOwnProperty.call(stateValue.enabledByModId, modId)
+    ) {
       effective.enabled = stateValue.enabledByModId[modId] === true;
     } else {
       effective.enabled = false;
     }
 
-    if (isModGroup(effective) && Object.prototype.hasOwnProperty.call(stateValue.selectedItemByGroupModId, modId)) {
-      const selectedItemIds = (Array.isArray(stateValue.selectedItemByGroupModId[modId])
-        ? stateValue.selectedItemByGroupModId[modId]
-        : [stateValue.selectedItemByGroupModId[modId]])
+    if (
+      isModGroup(effective) &&
+      Object.prototype.hasOwnProperty.call(
+        stateValue.selectedItemByGroupModId,
+        modId,
+      )
+    ) {
+      const selectedItemIds = (
+        Array.isArray(stateValue.selectedItemByGroupModId[modId])
+          ? stateValue.selectedItemByGroupModId[modId]
+          : [stateValue.selectedItemByGroupModId[modId]]
+      )
         .map((itemId) => String(itemId || "").trim())
-        .filter((itemId) => Array.isArray(effective.items)
-          && effective.items.some((item) => String(item?.id || "").trim() === itemId));
-      effective.selectedItemIds = effective.isMultiselect === true
-        ? selectedItemIds
-        : [selectedItemIds[0] || effective.selectedItemId];
+        .filter(
+          (itemId) =>
+            Array.isArray(effective.items) &&
+            effective.items.some(
+              (item) => String(item?.id || "").trim() === itemId,
+            ),
+        );
+      effective.selectedItemIds =
+        effective.isMultiselect === true
+          ? selectedItemIds
+          : [selectedItemIds[0] || effective.selectedItemId];
       effective.selectedItemId = effective.selectedItemIds[0] || "";
     }
 
@@ -195,28 +238,39 @@ export function applyLocalModsState(mods, localState) {
   });
 }
 
-export function seedCurrentChatLocalStateFromMod(mods, mod, effectiveMod = null) {
+export function seedCurrentChatLocalStateFromMod(
+  mods,
+  mod,
+  effectiveMod = null,
+) {
   const modId = String(mod?.id || "").trim();
   if (!modId) {
     return;
   }
 
-  const sourceMod = effectiveMod && typeof effectiveMod === "object"
-    ? effectiveMod
-    : mod;
+  const sourceMod =
+    effectiveMod && typeof effectiveMod === "object" ? effectiveMod : mod;
   const context = getContext();
   const localState = cleanupModsLocalState(context, mods);
 
   localState.enabledByModId[modId] = sourceMod?.enabled === true;
 
   if (isModGroup(mod)) {
-    const selectedItemIds = (Array.isArray(sourceMod?.selectedItemIds) ? sourceMod.selectedItemIds : [sourceMod?.selectedItemId || mod?.selectedItemId])
+    const selectedItemIds = (
+      Array.isArray(sourceMod?.selectedItemIds)
+        ? sourceMod.selectedItemIds
+        : [sourceMod?.selectedItemId || mod?.selectedItemId]
+    )
       .map((itemId) => String(itemId || "").trim())
-      .filter((itemId) => Array.isArray(mod?.items)
-        && mod.items.some((item) => String(item?.id || "").trim() === itemId));
+      .filter(
+        (itemId) =>
+          Array.isArray(mod?.items) &&
+          mod.items.some((item) => String(item?.id || "").trim() === itemId),
+      );
 
     if (selectedItemIds.length) {
-      localState.selectedItemByGroupModId[modId] = mod.isMultiselect === true ? selectedItemIds : [selectedItemIds[0]];
+      localState.selectedItemByGroupModId[modId] =
+        mod.isMultiselect === true ? selectedItemIds : [selectedItemIds[0]];
     }
   }
 

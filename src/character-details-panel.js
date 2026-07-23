@@ -1,6 +1,18 @@
-import { getContext, extension_settings, findExtension } from "../../../../extensions.js";
-import { callGenericPopup, POPUP_TYPE, POPUP_RESULT, Popup } from "../../../../popup.js";
-import { saveSettingsDebounced, user_avatar as globalUserAvatar } from "../../../../../script.js";
+import {
+  getContext,
+  extension_settings,
+  findExtension,
+} from "../../../../extensions.js";
+import {
+  callGenericPopup,
+  POPUP_TYPE,
+  POPUP_RESULT,
+  Popup,
+} from "../../../../popup.js";
+import {
+  saveSettingsDebounced,
+  user_avatar as globalUserAvatar,
+} from "../../../../../script.js";
 import {
   loadCharacterDetails,
   saveCharacterDetails,
@@ -9,9 +21,20 @@ import {
   createLayer,
   normalizeCharacterDetails,
 } from "./character-details-store.js";
-import { buildDescriptionsText, buildGenDescriptions, buildCharacterVisualDescription } from "./character-details-descriptions.js";
-import { runDescriptionsGeneration, runOutfitGenerationForCharacter, runCharacterGenerationWithAI } from "./character-details-generation.js";
-import { IMAGE_RESOLUTION_OPTIONS, DEFAULT_RESOLUTION_OPTION } from "./image-resolution-options.js";
+import {
+  buildDescriptionsText,
+  buildGenDescriptions,
+  buildCharacterVisualDescription,
+} from "./character-details-descriptions.js";
+import {
+  runDescriptionsGeneration,
+  runOutfitGenerationForCharacter,
+  runCharacterGenerationWithAI,
+} from "./character-details-generation.js";
+import {
+  IMAGE_RESOLUTION_OPTIONS,
+  DEFAULT_RESOLUTION_OPTION,
+} from "./image-resolution-options.js";
 import { showCharacterDetailsDiff } from "./character-details-diff-modal.js";
 import { applyBackgroundFromImage } from "./background-manager.js";
 import {
@@ -20,9 +43,7 @@ import {
   escapeHtml,
   getInitials,
 } from "./character-details-shared-utils.js";
-import {
-  getModsForGeneration,
-} from "./character-details-mod-prompts.js";
+import { getModsForGeneration } from "./character-details-mod-prompts.js";
 import {
   resetMessageProcessing,
   setActionButtonsDependencies,
@@ -66,7 +87,8 @@ const COMPACT_EMPTY_FOOTER_MESSAGE = "Enter chat to start managing details.";
 const FORBIDDEN_NAME_CHARS = /[\[\]\/|]/g;
 
 const MOBILE_DRAWER_MEDIA_QUERY = "(max-width: 1000px)";
-const PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID = "character-details-remove-newlines";
+const PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID =
+  "character-details-remove-newlines";
 const GUIDE_PROMPTS_LOCAL_STORAGE_KEY = "characterDetailsGuidePrompts";
 const IMAGE_SETTINGS_CHANGED_EVENT = "st-charmander:image-settings-changed";
 
@@ -75,7 +97,10 @@ function hasImageGenerationExtension() {
 }
 
 function shouldShowImageGenerationButtons() {
-  return hasImageGenerationExtension() && extension_settings?.[extensionName]?.show_image_generation_buttons !== false;
+  return (
+    hasImageGenerationExtension() &&
+    extension_settings?.[extensionName]?.show_image_generation_buttons !== false
+  );
 }
 
 function shouldPreviewImagePrompts() {
@@ -92,7 +117,9 @@ function normalizeQuickResolutionId(value) {
 }
 
 function getConfiguredQuickResolutionIds() {
-  const rawValues = Array.isArray(extension_settings?.[extensionName]?.quick_resolutions)
+  const rawValues = Array.isArray(
+    extension_settings?.[extensionName]?.quick_resolutions,
+  )
     ? extension_settings[extensionName].quick_resolutions
     : [];
   const seen = new Set();
@@ -112,17 +139,24 @@ function getConfiguredQuickResolutionIds() {
 }
 
 function shouldShowQuickResolutionButton() {
-  return shouldShowImageGenerationButtons()
-    && extension_settings?.[extensionName]?.show_quick_resolution_button === true
-    && getConfiguredQuickResolutionIds().length > 0;
+  return (
+    shouldShowImageGenerationButtons() &&
+    extension_settings?.[extensionName]?.show_quick_resolution_button ===
+      true &&
+    getConfiguredQuickResolutionIds().length > 0
+  );
 }
 
 function shouldUseCropToolForAvatars() {
-  return extension_settings?.[extensionName]?.use_crop_tool_for_avatars === true;
+  return (
+    extension_settings?.[extensionName]?.use_crop_tool_for_avatars === true
+  );
 }
 
 function shouldRemoveImagePromptNewlines() {
-  return extension_settings?.[extensionName]?.remove_image_prompt_newlines !== false;
+  return (
+    extension_settings?.[extensionName]?.remove_image_prompt_newlines !== false
+  );
 }
 
 function getQuickResolutionIconClass(resolution) {
@@ -155,17 +189,22 @@ function getQuickResolutionDisplayLabel(resolutionId) {
 
 function getActiveQuickResolutionId() {
   const configuredIds = getConfiguredQuickResolutionIds();
-  const activeId = normalizeQuickResolutionId(extension_settings?.[extensionName]?.active_quick_resolution);
-  return configuredIds.includes(activeId) ? activeId : DEFAULT_RESOLUTION_OPTION;
+  const activeId = normalizeQuickResolutionId(
+    extension_settings?.[extensionName]?.active_quick_resolution,
+  );
+  return configuredIds.includes(activeId)
+    ? activeId
+    : DEFAULT_RESOLUTION_OPTION;
 }
 
 function setActiveQuickResolution(resolutionId) {
   extension_settings[extensionName] = extension_settings[extensionName] || {};
   const configuredIds = getConfiguredQuickResolutionIds();
   const normalizedId = normalizeQuickResolutionId(resolutionId);
-  extension_settings[extensionName].active_quick_resolution = configuredIds.includes(normalizedId)
-    ? normalizedId
-    : DEFAULT_RESOLUTION_OPTION;
+  extension_settings[extensionName].active_quick_resolution =
+    configuredIds.includes(normalizedId)
+      ? normalizedId
+      : DEFAULT_RESOLUTION_OPTION;
   renderQuickResolutionState();
   saveSettingsDebounced();
 }
@@ -177,7 +216,11 @@ function getQuickResolutionOverride() {
   }
 
   const preset = IMAGE_RESOLUTION_OPTIONS[activeId];
-  if (!preset || !Number.isFinite(preset.width) || !Number.isFinite(preset.height)) {
+  if (
+    !preset ||
+    !Number.isFinite(preset.width) ||
+    !Number.isFinite(preset.height)
+  ) {
     return null;
   }
 
@@ -187,14 +230,17 @@ function getQuickResolutionOverride() {
 function setRemoveImagePromptNewlines(nextValue) {
   extension_settings[extensionName] = extension_settings[extensionName] || {};
   const normalizedValue = Boolean(nextValue);
-  extension_settings[extensionName].remove_image_prompt_newlines = normalizedValue;
+  extension_settings[extensionName].remove_image_prompt_newlines =
+    normalizedValue;
   $("#remove_image_prompt_newlines").prop("checked", normalizedValue);
   saveSettingsDebounced();
 }
 
 function buildPromptPreviewPopupOptions(baseOptions = {}) {
   const currentRemoveNewlines = shouldRemoveImagePromptNewlines();
-  const baseCustomInputs = Array.isArray(baseOptions.customInputs) ? baseOptions.customInputs : [];
+  const baseCustomInputs = Array.isArray(baseOptions.customInputs)
+    ? baseOptions.customInputs
+    : [];
   const baseOnClose = baseOptions.onClose;
 
   return {
@@ -209,7 +255,9 @@ function buildPromptPreviewPopupOptions(baseOptions = {}) {
       },
     ],
     onClose: async (popup) => {
-      const removeNewlinesValue = popup?.inputResults?.get(PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID);
+      const removeNewlinesValue = popup?.inputResults?.get(
+        PROMPT_PREVIEW_REMOVE_NEWLINES_INPUT_ID,
+      );
       if (removeNewlinesValue !== undefined) {
         const normalizedValue = Boolean(removeNewlinesValue);
         if (normalizedValue !== shouldRemoveImagePromptNewlines()) {
@@ -225,11 +273,15 @@ function buildPromptPreviewPopupOptions(baseOptions = {}) {
 }
 
 function shouldAutoAddPersonaCharacter() {
-  return extension_settings?.[extensionName]?.auto_add_persona_character_for_new_chat !== false;
+  return (
+    extension_settings?.[extensionName]
+      ?.auto_add_persona_character_for_new_chat !== false
+  );
 }
 
 function getLlmHistoryMessageLimit() {
-  const rawValue = extension_settings?.[extensionName]?.llm_history_message_limit;
+  const rawValue =
+    extension_settings?.[extensionName]?.llm_history_message_limit;
   const numeric = Number(rawValue);
   if (!Number.isFinite(numeric)) {
     return 5;
@@ -243,7 +295,9 @@ function mapChatMessageToLlmRole(message) {
     return null;
   }
 
-  const role = String(message.role || "").trim().toLowerCase();
+  const role = String(message.role || "")
+    .trim()
+    .toLowerCase();
   if (role === "user" || role === "assistant" || role === "system") {
     return role;
   }
@@ -327,7 +381,9 @@ function buildLimitedChatPrompt(context, systemPrompt) {
 function serializePromptMessagesForQuietPrompt(messages) {
   return (Array.isArray(messages) ? messages : [])
     .map((message) => {
-      const role = String(message?.role || "system").trim().toUpperCase();
+      const role = String(message?.role || "system")
+        .trim()
+        .toUpperCase();
       const content = String(message?.content || "").trim();
       if (!content) {
         return "";
@@ -340,7 +396,8 @@ function serializePromptMessagesForQuietPrompt(messages) {
 }
 
 function getSwitcherCharacterLimit() {
-  const rawValue = extension_settings?.[extensionName]?.switcher_character_limit;
+  const rawValue =
+    extension_settings?.[extensionName]?.switcher_character_limit;
   const numeric = Number(rawValue);
   if (!Number.isFinite(numeric)) {
     return 7;
@@ -355,11 +412,18 @@ function isMobileDrawerMode() {
 
 function hasChatTarget(context = null) {
   const sourceContext = context || getContext();
-  return (sourceContext.characterId !== undefined && sourceContext.characterId !== null) || Boolean(sourceContext.groupId);
+  return (
+    (sourceContext.characterId !== undefined &&
+      sourceContext.characterId !== null) ||
+    Boolean(sourceContext.groupId)
+  );
 }
 
 function isRightDrawerCompactEnabled() {
-  return extension_settings?.[extensionName]?.[RIGHT_DRAWER_COMPACT_SETTING_KEY] === true;
+  return (
+    extension_settings?.[extensionName]?.[RIGHT_DRAWER_COMPACT_SETTING_KEY] ===
+    true
+  );
 }
 
 function isRightDrawerCompactActive() {
@@ -373,7 +437,9 @@ function renderCompactEmptyFooterState(showMessage) {
 
   let message = footerRoot.find(".character-details-footer__empty-message");
   if (!message.length) {
-    footerRoot.append('<div class="character-details-footer__empty-message displayNone"></div>');
+    footerRoot.append(
+      '<div class="character-details-footer__empty-message displayNone"></div>',
+    );
     message = footerRoot.find(".character-details-footer__empty-message");
   }
 
@@ -389,7 +455,12 @@ function renderCompactEmptyFooterState(showMessage) {
 }
 
 function renderRightCompactControls() {
-  if (!panelContainerRoot?.length || !mobileDrawerToggleButton?.length || !rightCompactToggleButton?.length || !rightCompactRestoreButton?.length) {
+  if (
+    !panelContainerRoot?.length ||
+    !mobileDrawerToggleButton?.length ||
+    !rightCompactToggleButton?.length ||
+    !rightCompactRestoreButton?.length
+  ) {
     return;
   }
 
@@ -415,13 +486,20 @@ function renderRightCompactControls() {
       .toggleClass("is-compact-angle-down", !compactMode);
   } else {
     compactIcon
-      .removeClass("fa-angle-up fa-arrow-down fa-arrow-up is-compact-angle-down")
+      .removeClass(
+        "fa-angle-up fa-arrow-down fa-arrow-up is-compact-angle-down",
+      )
       .addClass("fa-angle-down");
   }
 
-  rightCompactToggleButton.attr("title", mobileMode
-    ? (compactMode ? "Show character details" : "Compact view")
-    : "Compact view");
+  rightCompactToggleButton.attr(
+    "title",
+    mobileMode
+      ? compactMode
+        ? "Show character details"
+        : "Compact view"
+      : "Compact view",
+  );
   rightCompactRestoreButton.attr("title", "Show character details");
 
   mobileDrawerToggleButton.toggleClass(
@@ -439,7 +517,8 @@ function setRightDrawerCompact(nextCompactValue, options = {}) {
   rightDrawerCompact = nextCompactValue === true;
   if (persist) {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
-    extension_settings[extensionName][RIGHT_DRAWER_COMPACT_SETTING_KEY] = rightDrawerCompact;
+    extension_settings[extensionName][RIGHT_DRAWER_COMPACT_SETTING_KEY] =
+      rightDrawerCompact;
     saveSettingsDebounced();
   }
   renderPanel();
@@ -452,15 +531,26 @@ function renderMobileDrawerState() {
   }
 
   const mobileMode = isMobileDrawerMode();
-  panelContainerRoot.toggleClass("is-mobile-collapsed", mobileMode && !mobileDrawerOpen);
-  panelContainerRoot.toggleClass("is-desktop-collapsed", !mobileMode && !mobileDrawerOpen);
+  panelContainerRoot.toggleClass(
+    "is-mobile-collapsed",
+    mobileMode && !mobileDrawerOpen,
+  );
+  panelContainerRoot.toggleClass(
+    "is-desktop-collapsed",
+    !mobileMode && !mobileDrawerOpen,
+  );
 
   mobileDrawerToggleButton.toggleClass("is-open", mobileDrawerOpen);
 
   const icon = mobileDrawerToggleButton.find("i");
-  icon.removeClass("fa-angle-left fa-angle-right").addClass(mobileDrawerOpen ? "fa-angle-right" : "fa-angle-left");
+  icon
+    .removeClass("fa-angle-left fa-angle-right")
+    .addClass(mobileDrawerOpen ? "fa-angle-right" : "fa-angle-left");
 
-  mobileDrawerToggleButton.attr("title", mobileDrawerOpen ? "Hide character panel" : "Show character panel");
+  mobileDrawerToggleButton.attr(
+    "title",
+    mobileDrawerOpen ? "Hide character panel" : "Show character panel",
+  );
   renderRightCompactControls();
 }
 
@@ -542,13 +632,20 @@ function getCustomResolutionForMode(mode) {
     return null;
   }
 
-  const selected = String(extension_settings?.[extensionName]?.custom_resolutions?.[key] || DEFAULT_RESOLUTION_OPTION);
+  const selected = String(
+    extension_settings?.[extensionName]?.custom_resolutions?.[key] ||
+      DEFAULT_RESOLUTION_OPTION,
+  );
   if (selected === DEFAULT_RESOLUTION_OPTION) {
     return null;
   }
 
   const preset = IMAGE_RESOLUTION_OPTIONS[selected];
-  if (!preset || !Number.isFinite(preset.width) || !Number.isFinite(preset.height)) {
+  if (
+    !preset ||
+    !Number.isFinite(preset.width) ||
+    !Number.isFinite(preset.height)
+  ) {
     return null;
   }
 
@@ -567,18 +664,22 @@ function getPresentCharacters(data, options = {}) {
 }
 
 function buildCharactersVisualDescriptions(data, characters, options = {}) {
-  const extraByCharacterId = options.extraByCharacterId instanceof Map
-    ? options.extraByCharacterId
-    : new Map();
+  const extraByCharacterId =
+    options.extraByCharacterId instanceof Map
+      ? options.extraByCharacterId
+      : new Map();
 
   return (Array.isArray(characters) ? characters : [])
     .map((character) => {
       const characterId = String(character?.id || "").trim();
-      const additionalWearingItems = characterId && extraByCharacterId.has(characterId)
-        ? extraByCharacterId.get(characterId)
-        : [];
+      const additionalWearingItems =
+        characterId && extraByCharacterId.has(characterId)
+          ? extraByCharacterId.get(characterId)
+          : [];
 
-      return buildCharacterVisualDescription(data, character.id, { additionalWearingItems });
+      return buildCharacterVisualDescription(data, character.id, {
+        additionalWearingItems,
+      });
     })
     .filter(Boolean)
     .join("\n\n");
@@ -625,8 +726,10 @@ function isGenerationAbortError(error) {
 
   const errorName = String(error?.name || "").toLowerCase();
   const errorMessage = String(error?.message || error || "").toLowerCase();
-  return errorName === "aborterror"
-    || /abort|aborted|cancel|canceled|stopped|interrupted/.test(errorMessage);
+  return (
+    errorName === "aborterror" ||
+    /abort|aborted|cancel|canceled|stopped|interrupted/.test(errorMessage)
+  );
 }
 
 function requestStopGeneration(context) {
@@ -753,7 +856,9 @@ async function generateWithChatStopSemantics(context, promptText) {
 
   // Legacy fallback for older ST builds without generateQuietPrompt in context.
   const sendTextarea = $("#send_textarea");
-  const previousInputValue = sendTextarea.length ? String(sendTextarea.val() || "") : "";
+  const previousInputValue = sendTextarea.length
+    ? String(sendTextarea.val() || "")
+    : "";
 
   const response = await context.generate("impersonate", {
     automatic_trigger: true,
@@ -795,19 +900,22 @@ function normalizeGuidePromptList(rawValue) {
     return [];
   }
 
-  return value
-    .map((entry) => normalizeGuidePromptValue(entry))
-    .filter(Boolean);
+  return value.map((entry) => normalizeGuidePromptValue(entry)).filter(Boolean);
 }
 
 function readGuidePromptList(context) {
-  const rawValue = context?.variables?.local?.get?.(GUIDE_PROMPTS_LOCAL_STORAGE_KEY);
+  const rawValue = context?.variables?.local?.get?.(
+    GUIDE_PROMPTS_LOCAL_STORAGE_KEY,
+  );
   return normalizeGuidePromptList(rawValue);
 }
 
 function writeGuidePromptList(context, promptList) {
   const normalizedList = normalizeGuidePromptList(promptList);
-  context?.variables?.local?.set?.(GUIDE_PROMPTS_LOCAL_STORAGE_KEY, normalizedList);
+  context?.variables?.local?.set?.(
+    GUIDE_PROMPTS_LOCAL_STORAGE_KEY,
+    normalizedList,
+  );
 }
 
 function buildTextMeasurementFont(element) {
@@ -889,10 +997,17 @@ function getSelectLabelMaxWidthPx(selectElement) {
   const fontSize = Number.parseFloat(style.fontSize || "16") || 16;
   const arrowReserve = Math.max(28, fontSize * 1.8);
 
-  return Math.max(32, selectElement.clientWidth - paddingLeft - paddingRight - arrowReserve);
+  return Math.max(
+    32,
+    selectElement.clientWidth - paddingLeft - paddingRight - arrowReserve,
+  );
 }
 
-function formatGuidePromptOptionLabel(promptValue, index, selectElement = null) {
+function formatGuidePromptOptionLabel(
+  promptValue,
+  index,
+  selectElement = null,
+) {
   const oneLineText = String(promptValue || "")
     .replace(/\r\n?/g, " ")
     .replace(/\s+/g, " ")
@@ -927,8 +1042,14 @@ async function askGuideForPrompt() {
   const buildGuidePromptOptionsHtml = (selectElement = null) => {
     const options = ['<option value="">none</option>'];
     for (let index = 0; index < savedPromptList.length; index += 1) {
-      const optionLabel = formatGuidePromptOptionLabel(savedPromptList[index], index, selectElement);
-      options.push(`<option value="${index}">${escapeHtml(optionLabel)}</option>`);
+      const optionLabel = formatGuidePromptOptionLabel(
+        savedPromptList[index],
+        index,
+        selectElement,
+      );
+      options.push(
+        `<option value="${index}">${escapeHtml(optionLabel)}</option>`,
+      );
     }
 
     return options.join("");
@@ -948,179 +1069,221 @@ async function askGuideForPrompt() {
     </div>
   `;
 
-  const guidePopup = new Popup(
-    guidePopupContent,
-    POPUP_TYPE.INPUT,
-    "",
-    {
-      rows: 4,
-      okButton: "Apply",
-      cancelButton: "Cancel",
-      customInputs: [
-        {
-          id: guidePromptSaveCheckboxId,
-          label: "Save for this chat",
-          type: "checkbox",
-          defaultState: false,
-        },
-        {
-          id: guidePromptOverwriteCheckboxId,
-          label: "Overwrite",
-          type: "checkbox",
-          defaultState: false,
-        },
-      ],
-      onOpen: (popup) => {
-        const selectElement = popup.dlg.querySelector(`#${guidePromptSelectId}`);
-        const deleteButton = popup.dlg.querySelector(`#${guidePromptDeleteButtonId}`);
-        const pickerWrapper = popup.dlg.querySelector(`#${guidePromptPickerWrapperId}`);
-        const saveCheckbox = popup.dlg.querySelector(`#${guidePromptSaveCheckboxId}`);
-        const overwriteCheckbox = popup.dlg.querySelector(`#${guidePromptOverwriteCheckboxId}`);
-        const saveLabel = saveCheckbox?.closest("label");
-        const overwriteLabel = overwriteCheckbox?.closest("label");
+  const guidePopup = new Popup(guidePopupContent, POPUP_TYPE.INPUT, "", {
+    rows: 4,
+    okButton: "Apply",
+    cancelButton: "Cancel",
+    customInputs: [
+      {
+        id: guidePromptSaveCheckboxId,
+        label: "Save for this chat",
+        type: "checkbox",
+        defaultState: false,
+      },
+      {
+        id: guidePromptOverwriteCheckboxId,
+        label: "Overwrite",
+        type: "checkbox",
+        defaultState: false,
+      },
+    ],
+    onOpen: (popup) => {
+      const selectElement = popup.dlg.querySelector(`#${guidePromptSelectId}`);
+      const deleteButton = popup.dlg.querySelector(
+        `#${guidePromptDeleteButtonId}`,
+      );
+      const pickerWrapper = popup.dlg.querySelector(
+        `#${guidePromptPickerWrapperId}`,
+      );
+      const saveCheckbox = popup.dlg.querySelector(
+        `#${guidePromptSaveCheckboxId}`,
+      );
+      const overwriteCheckbox = popup.dlg.querySelector(
+        `#${guidePromptOverwriteCheckboxId}`,
+      );
+      const saveLabel = saveCheckbox?.closest("label");
+      const overwriteLabel = overwriteCheckbox?.closest("label");
 
-        const alignPickerToInput = () => {
-          if (!pickerWrapper || !popup?.mainInput || !popup?.content || typeof window?.getComputedStyle !== "function") {
-            return;
+      const alignPickerToInput = () => {
+        if (
+          !pickerWrapper ||
+          !popup?.mainInput ||
+          !popup?.content ||
+          typeof window?.getComputedStyle !== "function"
+        ) {
+          return;
+        }
+
+        const contentStyle = window.getComputedStyle(popup.content);
+        const inputStyle = window.getComputedStyle(popup.mainInput);
+        const paddingLeftPx =
+          Number.parseFloat(contentStyle.paddingLeft || "0") || 0;
+        const paddingRightPx =
+          Number.parseFloat(contentStyle.paddingRight || "0") || 0;
+        const marginLeftPx =
+          Number.parseFloat(inputStyle.marginLeft || "0") || 0;
+        const marginRightPx =
+          Number.parseFloat(inputStyle.marginRight || "0") || 0;
+        const targetMarginLeftPx = marginLeftPx - paddingLeftPx;
+        const targetMarginRightPx = marginRightPx - paddingRightPx;
+        const widthAdjustmentPx =
+          paddingLeftPx + paddingRightPx - marginLeftPx - marginRightPx;
+
+        pickerWrapper.style.marginLeft = `${targetMarginLeftPx}px`;
+        pickerWrapper.style.marginRight = `${targetMarginRightPx}px`;
+        pickerWrapper.style.width = `calc(100% + ${widthAdjustmentPx}px)`;
+        pickerWrapper.style.maxWidth = `calc(100% + ${widthAdjustmentPx}px)`;
+      };
+
+      const syncGuideControls = () => {
+        const hasSelectedSavedPrompt =
+          selectedPromptIndex >= 0 &&
+          selectedPromptIndex < savedPromptList.length;
+
+        if (pickerWrapper) {
+          pickerWrapper.style.display = savedPromptList.length
+            ? "grid"
+            : "none";
+          if (savedPromptList.length) {
+            alignPickerToInput();
           }
+        }
 
-          const contentStyle = window.getComputedStyle(popup.content);
-          const inputStyle = window.getComputedStyle(popup.mainInput);
-          const paddingLeftPx = Number.parseFloat(contentStyle.paddingLeft || "0") || 0;
-          const paddingRightPx = Number.parseFloat(contentStyle.paddingRight || "0") || 0;
-          const marginLeftPx = Number.parseFloat(inputStyle.marginLeft || "0") || 0;
-          const marginRightPx = Number.parseFloat(inputStyle.marginRight || "0") || 0;
-          const targetMarginLeftPx = marginLeftPx - paddingLeftPx;
-          const targetMarginRightPx = marginRightPx - paddingRightPx;
-          const widthAdjustmentPx = paddingLeftPx + paddingRightPx - marginLeftPx - marginRightPx;
+        if (saveLabel) {
+          saveLabel.classList.toggle("displayNone", hasSelectedSavedPrompt);
+        }
 
-          pickerWrapper.style.marginLeft = `${targetMarginLeftPx}px`;
-          pickerWrapper.style.marginRight = `${targetMarginRightPx}px`;
-          pickerWrapper.style.width = `calc(100% + ${widthAdjustmentPx}px)`;
-          pickerWrapper.style.maxWidth = `calc(100% + ${widthAdjustmentPx}px)`;
-        };
-
-        const syncGuideControls = () => {
-          const hasSelectedSavedPrompt = selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length;
-
-          if (pickerWrapper) {
-            pickerWrapper.style.display = savedPromptList.length ? "grid" : "none";
-            if (savedPromptList.length) {
-              alignPickerToInput();
-            }
-          }
-
-          if (saveLabel) {
-            saveLabel.classList.toggle("displayNone", hasSelectedSavedPrompt);
-          }
-
-          if (overwriteLabel) {
-            overwriteLabel.classList.toggle("displayNone", !hasSelectedSavedPrompt);
-          }
-
-          if (deleteButton) {
-            deleteButton.disabled = !hasSelectedSavedPrompt;
-            deleteButton.classList.toggle("is-disabled", !hasSelectedSavedPrompt);
-            deleteButton.style.opacity = hasSelectedSavedPrompt ? "" : "0.45";
-            deleteButton.style.cursor = hasSelectedSavedPrompt ? "" : "not-allowed";
-            deleteButton.setAttribute("aria-disabled", hasSelectedSavedPrompt ? "false" : "true");
-            deleteButton.title = hasSelectedSavedPrompt
-              ? "Delete selected prompt"
-              : "Select a saved prompt to delete";
-
-            if (selectElement) {
-              const selectHeight = Math.round(selectElement.getBoundingClientRect().height);
-              if (selectHeight > 0) {
-                deleteButton.style.height = `${selectHeight}px`;
-              }
-            }
-          }
-        };
-
-        const renderSelectOptions = () => {
-          if (!selectElement) {
-            return;
-          }
-
-          selectElement.innerHTML = buildGuidePromptOptionsHtml(selectElement);
-          if (selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length) {
-            selectElement.value = String(selectedPromptIndex);
-          } else {
-            selectElement.value = "";
-            selectedPromptIndex = -1;
-          }
-        };
-
-        syncGuideControls();
-        renderSelectOptions();
-
-        if (selectElement) {
-          selectElement.addEventListener("change", () => {
-            const selectedValue = String(selectElement.value || "").trim();
-            const parsedIndex = selectedValue === "" ? -1 : Number(selectedValue);
-            selectedPromptIndex = Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < savedPromptList.length
-              ? parsedIndex
-              : -1;
-
-            if (selectedPromptIndex >= 0) {
-              popup.mainInput.value = savedPromptList[selectedPromptIndex] || "";
-            }
-
-            if (saveCheckbox) {
-              saveCheckbox.checked = false;
-            }
-
-            if (overwriteCheckbox) {
-              overwriteCheckbox.checked = false;
-            }
-
-            syncGuideControls();
-          });
+        if (overwriteLabel) {
+          overwriteLabel.classList.toggle(
+            "displayNone",
+            !hasSelectedSavedPrompt,
+          );
         }
 
         if (deleteButton) {
-          deleteButton.addEventListener("click", () => {
-            if (deleteButton.disabled) {
-              return;
+          deleteButton.disabled = !hasSelectedSavedPrompt;
+          deleteButton.classList.toggle("is-disabled", !hasSelectedSavedPrompt);
+          deleteButton.style.opacity = hasSelectedSavedPrompt ? "" : "0.45";
+          deleteButton.style.cursor = hasSelectedSavedPrompt
+            ? ""
+            : "not-allowed";
+          deleteButton.setAttribute(
+            "aria-disabled",
+            hasSelectedSavedPrompt ? "false" : "true",
+          );
+          deleteButton.title = hasSelectedSavedPrompt
+            ? "Delete selected prompt"
+            : "Select a saved prompt to delete";
+
+          if (selectElement) {
+            const selectHeight = Math.round(
+              selectElement.getBoundingClientRect().height,
+            );
+            if (selectHeight > 0) {
+              deleteButton.style.height = `${selectHeight}px`;
             }
-
-            if (!(selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length)) {
-              return;
-            }
-
-            savedPromptList.splice(selectedPromptIndex, 1);
-            writeGuidePromptList(context, savedPromptList);
-            selectedPromptIndex = -1;
-
-            renderSelectOptions();
-            syncGuideControls();
-          });
-        }
-      },
-      onClosing: (popup) => {
-        if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
-          return true;
-        }
-
-        const guideText = normalizeGuidePromptValue(popup.mainInput.value);
-        const shouldSaveForChat = popup.inputResults?.get(guidePromptSaveCheckboxId) === true;
-        const shouldOverwrite = popup.inputResults?.get(guidePromptOverwriteCheckboxId) === true;
-        const hasSelectedSavedPrompt = selectedPromptIndex >= 0 && selectedPromptIndex < savedPromptList.length;
-
-        if (hasSelectedSavedPrompt) {
-          if (shouldOverwrite && guideText) {
-            savedPromptList[selectedPromptIndex] = guideText;
-            writeGuidePromptList(context, savedPromptList);
           }
-        } else if (shouldSaveForChat && guideText) {
-          savedPromptList.push(guideText);
+        }
+      };
+
+      const renderSelectOptions = () => {
+        if (!selectElement) {
+          return;
+        }
+
+        selectElement.innerHTML = buildGuidePromptOptionsHtml(selectElement);
+        if (
+          selectedPromptIndex >= 0 &&
+          selectedPromptIndex < savedPromptList.length
+        ) {
+          selectElement.value = String(selectedPromptIndex);
+        } else {
+          selectElement.value = "";
+          selectedPromptIndex = -1;
+        }
+      };
+
+      syncGuideControls();
+      renderSelectOptions();
+
+      if (selectElement) {
+        selectElement.addEventListener("change", () => {
+          const selectedValue = String(selectElement.value || "").trim();
+          const parsedIndex = selectedValue === "" ? -1 : Number(selectedValue);
+          selectedPromptIndex =
+            Number.isInteger(parsedIndex) &&
+            parsedIndex >= 0 &&
+            parsedIndex < savedPromptList.length
+              ? parsedIndex
+              : -1;
+
+          if (selectedPromptIndex >= 0) {
+            popup.mainInput.value = savedPromptList[selectedPromptIndex] || "";
+          }
+
+          if (saveCheckbox) {
+            saveCheckbox.checked = false;
+          }
+
+          if (overwriteCheckbox) {
+            overwriteCheckbox.checked = false;
+          }
+
+          syncGuideControls();
+        });
+      }
+
+      if (deleteButton) {
+        deleteButton.addEventListener("click", () => {
+          if (deleteButton.disabled) {
+            return;
+          }
+
+          if (
+            !(
+              selectedPromptIndex >= 0 &&
+              selectedPromptIndex < savedPromptList.length
+            )
+          ) {
+            return;
+          }
+
+          savedPromptList.splice(selectedPromptIndex, 1);
+          writeGuidePromptList(context, savedPromptList);
+          selectedPromptIndex = -1;
+
+          renderSelectOptions();
+          syncGuideControls();
+        });
+      }
+    },
+    onClosing: (popup) => {
+      if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
+        return true;
+      }
+
+      const guideText = normalizeGuidePromptValue(popup.mainInput.value);
+      const shouldSaveForChat =
+        popup.inputResults?.get(guidePromptSaveCheckboxId) === true;
+      const shouldOverwrite =
+        popup.inputResults?.get(guidePromptOverwriteCheckboxId) === true;
+      const hasSelectedSavedPrompt =
+        selectedPromptIndex >= 0 &&
+        selectedPromptIndex < savedPromptList.length;
+
+      if (hasSelectedSavedPrompt) {
+        if (shouldOverwrite && guideText) {
+          savedPromptList[selectedPromptIndex] = guideText;
           writeGuidePromptList(context, savedPromptList);
         }
+      } else if (shouldSaveForChat && guideText) {
+        savedPromptList.push(guideText);
+        writeGuidePromptList(context, savedPromptList);
+      }
 
-        return true;
-      },
+      return true;
     },
-  );
+  });
 
   const guide = await guidePopup.show();
 
@@ -1136,14 +1299,21 @@ async function generateCharacterImage(mode, triggerButton = null) {
   const button = triggerButton?.length ? triggerButton : null;
 
   if (activeImageGeneration?.running) {
-    const isSameButton = Boolean(button && activeImageGeneration.button && activeImageGeneration.button.is(button));
+    const isSameButton = Boolean(
+      button &&
+      activeImageGeneration.button &&
+      activeImageGeneration.button.is(button),
+    );
     if (isSameButton) {
       activeImageGeneration.cancelRequested = true;
       activeImageGeneration.stopSignaled = requestStopGeneration(context);
       return;
     }
 
-    toastr.info("Generation already in progress. Press stop on the active button to cancel.", "Character Details");
+    toastr.info(
+      "Generation already in progress. Press stop on the active button to cancel.",
+      "Character Details",
+    );
     return;
   }
 
@@ -1159,7 +1329,10 @@ async function generateCharacterImage(mode, triggerButton = null) {
   }
 
   if (!shouldShowImageGenerationButtons()) {
-    toastr.warning("Image generation requires built-in Image Generation extension (Optional modules: sd).", "Character Details");
+    toastr.warning(
+      "Image generation requires built-in Image Generation extension (Optional modules: sd).",
+      "Character Details",
+    );
     clearActiveImageGeneration(button);
     return;
   }
@@ -1167,10 +1340,12 @@ async function generateCharacterImage(mode, triggerButton = null) {
   const data = loadCharacterDetails(context);
   const activeCharacter = getActiveCharacter(data);
   const viewerCharacter = data.viewerCharacterId
-    ? (data.characters || []).find((character) => character.id === data.viewerCharacterId) || null
+    ? (data.characters || []).find(
+        (character) => character.id === data.viewerCharacterId,
+      ) || null
     : null;
   const modsForGeneration = getModsForGeneration(data, mode, context);
-  const { afterCharModsByCharacterId } = modsForGeneration;
+  const { afterCharModsByCharacterId, aiTechniques } = modsForGeneration;
 
   let characterDescription = "";
   let charactersPresentLine = "";
@@ -1184,11 +1359,21 @@ async function generateCharacterImage(mode, triggerButton = null) {
       return;
     }
 
-    characterDescription = buildCharacterVisualDescription(data, activeCharacter.id, {
-      additionalWearingItems: afterCharModsByCharacterId.get(String(activeCharacter.id || "").trim()) || [],
-    });
+    characterDescription = buildCharacterVisualDescription(
+      data,
+      activeCharacter.id,
+      {
+        additionalWearingItems:
+          afterCharModsByCharacterId.get(
+            String(activeCharacter.id || "").trim(),
+          ) || [],
+      },
+    );
     if (!characterDescription) {
-      toastr.warning("No active character description to generate image from.", "Character Details");
+      toastr.warning(
+        "No active character description to generate image from.",
+        "Character Details",
+      );
       clearActiveImageGeneration(button);
       return;
     }
@@ -1198,13 +1383,16 @@ async function generateCharacterImage(mode, triggerButton = null) {
         ? extension_settings?.[extensionName]?.closeup_portrait_prompt
         : extension_settings?.[extensionName]?.full_body_portrait_prompt,
     ).trim();
-    modeLine = mode === "portrait"
-      ? "You are writing a CLOSE-UP PORTRAIT prompt (head and upper torso only)."
-      : "You are writing a FULL BODY PORTRAIT prompt (entire body visible).";
+    modeLine =
+      mode === "portrait"
+        ? "You are writing a CLOSE-UP PORTRAIT prompt (head and upper torso only)."
+        : "You are writing a FULL BODY PORTRAIT prompt (entire body visible).";
   }
 
   if (mode === "background") {
-    scenePrompt = String(extension_settings?.[extensionName]?.describe_background_prompt || "").trim();
+    scenePrompt = String(
+      extension_settings?.[extensionName]?.describe_background_prompt || "",
+    ).trim();
     modeLine = "You are writing a BACKGROUND prompt for image generation.";
   }
 
@@ -1215,12 +1403,20 @@ async function generateCharacterImage(mode, triggerButton = null) {
       return;
     }
 
-    const presentWithoutViewer = getPresentCharacters(data, { excludeId: viewerCharacter.id });
-    charactersPresentLine = buildCharactersPresentLine(presentWithoutViewer);
-    characterDescription = buildCharactersVisualDescriptions(data, presentWithoutViewer, {
-      extraByCharacterId: afterCharModsByCharacterId,
+    const presentWithoutViewer = getPresentCharacters(data, {
+      excludeId: viewerCharacter.id,
     });
-    scenePrompt = String(extension_settings?.[extensionName]?.describe_viewer_eyes_prompt || "").trim();
+    charactersPresentLine = buildCharactersPresentLine(presentWithoutViewer);
+    characterDescription = buildCharactersVisualDescriptions(
+      data,
+      presentWithoutViewer,
+      {
+        extraByCharacterId: afterCharModsByCharacterId,
+      },
+    );
+    scenePrompt = String(
+      extension_settings?.[extensionName]?.describe_viewer_eyes_prompt || "",
+    ).trim();
     modeLine = `Viewpoint is from viewer's eyes. Viewer name is ${viewerCharacter.name || "viewer"}, but always call this person \"viewer\".`;
   }
 
@@ -1230,7 +1426,9 @@ async function generateCharacterImage(mode, triggerButton = null) {
     characterDescription = buildCharactersVisualDescriptions(data, presentAll, {
       extraByCharacterId: afterCharModsByCharacterId,
     });
-    scenePrompt = String(extension_settings?.[extensionName]?.describe_current_scene_prompt || "").trim();
+    scenePrompt = String(
+      extension_settings?.[extensionName]?.describe_current_scene_prompt || "",
+    ).trim();
     modeLine = "You are writing a CURRENT SCENE prompt for image generation.";
   }
 
@@ -1240,11 +1438,15 @@ async function generateCharacterImage(mode, triggerButton = null) {
     return;
   }
 
-  const visualCommandStart = String(extension_settings?.[extensionName]?.visual_command_start || "").trim();
-  const strictSceneRules = "Never mention any other person or character unless explicitly listed in Characters present.";
-  const alwaysLine = (mode === "portrait" || mode === "fullbody") && activeCharacter
-    ? `Always include exact line: \"${activeCharacter.name || "Unnamed"} is looking at viewer\".`
-    : "";
+  const visualCommandStart = String(
+    extension_settings?.[extensionName]?.visual_command_start || "",
+  ).trim();
+  const strictSceneRules =
+    "Never mention any other person or character unless explicitly listed in Characters present.";
+  const alwaysLine =
+    (mode === "portrait" || mode === "fullbody") && activeCharacter
+      ? `Always include exact line: \"${activeCharacter.name || "Unnamed"} is looking at viewer\".`
+      : "";
   const llmPrompt = [
     visualCommandStart,
     modeLine,
@@ -1252,23 +1454,39 @@ async function generateCharacterImage(mode, triggerButton = null) {
     scenePrompt,
     strictSceneRules,
     alwaysLine,
-    activeCharacter ? `Character name: ${activeCharacter.name || "Unnamed"}` : "",
-    guideText ? `IMPORTANT: User wants you to focus on this during your description: ${guideText}` : "",
-  ].filter(Boolean).join("\n\n");
+    activeCharacter
+      ? `Character name: ${activeCharacter.name || "Unnamed"}`
+      : "",
+    guideText
+      ? `IMPORTANT: User wants you to focus on this during your description: ${guideText}`
+      : "",
+    aiTechniques,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
-  let promptToast = toastr.info('<i class="fa-solid fa-spinner fa-spin"></i> Preparing image prompt...', 'Character Details', {
-    timeOut: 0,
-    extendedTimeOut: 0,
-    tapToDismiss: false,
-    escapeHtml: false,
-  });
+  let promptToast = toastr.info(
+    '<i class="fa-solid fa-spinner fa-spin"></i> Preparing image prompt...',
+    "Character Details",
+    {
+      timeOut: 0,
+      extendedTimeOut: 0,
+      tapToDismiss: false,
+      escapeHtml: false,
+    },
+  );
 
   try {
     let llmVisual = "";
     const limitedPromptMessages = buildLimitedChatPrompt(context, llmPrompt);
-    const quietPrompt = serializePromptMessagesForQuietPrompt(limitedPromptMessages);
+    const quietPrompt = serializePromptMessagesForQuietPrompt(
+      limitedPromptMessages,
+    );
 
-    if (activeImageGeneration?.cancelRequested && activeImageGeneration?.stopSignaled) {
+    if (
+      activeImageGeneration?.cancelRequested &&
+      activeImageGeneration?.stopSignaled
+    ) {
       throw new DOMException("Cancelled by user", "AbortError");
     }
 
@@ -1293,7 +1511,13 @@ async function generateCharacterImage(mode, triggerButton = null) {
     const modsMiddle = modsForGeneration.middle;
     const modsEnd = modsForGeneration.end;
 
-    let finalTrigger = [modsStart, characterDescription, modsMiddle, String(llmVisual || "").trim(), modsEnd]
+    let finalTrigger = [
+      modsStart,
+      characterDescription,
+      modsMiddle,
+      String(llmVisual || "").trim(),
+      modsEnd,
+    ]
       .filter(Boolean)
       .join("\n\n")
       .replace(/\r\n/g, "\n")
@@ -1309,14 +1533,24 @@ async function generateCharacterImage(mode, triggerButton = null) {
         'Preview and optionally edit the final image prompt. Press "Cancel" to abort generation.',
         POPUP_TYPE.INPUT,
         finalTrigger,
-        buildPromptPreviewPopupOptions({ rows: 12, okButton: "Generate", cancelButton: "Cancel" }),
+        buildPromptPreviewPopupOptions({
+          rows: 12,
+          okButton: "Generate",
+          cancelButton: "Cancel",
+        }),
       );
 
-      if (editedPrompt === null || editedPrompt === undefined || editedPrompt === false) {
+      if (
+        editedPrompt === null ||
+        editedPrompt === undefined ||
+        editedPrompt === false
+      ) {
         return;
       }
 
-      finalTrigger = String(editedPrompt || "").replace(/\r\n/g, "\n").trim();
+      finalTrigger = String(editedPrompt || "")
+        .replace(/\r\n/g, "\n")
+        .trim();
     }
 
     // Expand macros again after preview to apply macros manually added by the user.
@@ -1328,7 +1562,8 @@ async function generateCharacterImage(mode, triggerButton = null) {
       throw new Error("Empty image trigger");
     }
 
-    const finalTriggerForGenerator = formatPromptForImageGenerator(finalTrigger);
+    const finalTriggerForGenerator =
+      formatPromptForImageGenerator(finalTrigger);
     if (!finalTriggerForGenerator) {
       throw new Error("Empty image trigger");
     }
@@ -1354,7 +1589,10 @@ async function generateCharacterImage(mode, triggerButton = null) {
     if (isGenerationAbortError(error) || activeImageGeneration?.stopSignaled) {
       toastr.info("Image generation cancelled.", "Character Details");
     } else {
-      toastr.error(`Error: ${error?.message || "Image generation failed"}`, "Character Details");
+      toastr.error(
+        `Error: ${error?.message || "Image generation failed"}`,
+        "Character Details",
+      );
     }
   } finally {
     if (promptToast) {
@@ -1368,17 +1606,25 @@ async function generateCharacterImage(mode, triggerButton = null) {
 async function generateFreeImage() {
   const context = getContext();
   if (!shouldShowImageGenerationButtons()) {
-    toastr.warning("Image generation requires built-in Image Generation extension (Optional modules: sd).", "Character Details");
+    toastr.warning(
+      "Image generation requires built-in Image Generation extension (Optional modules: sd).",
+      "Character Details",
+    );
     return;
   }
 
   const data = loadCharacterDetails(context);
   const presentAll = getPresentCharacters(data);
   const modsForGeneration = getModsForGeneration(data, "free", context);
-  const afterCharModsByCharacterId = modsForGeneration.afterCharModsByCharacterId;
-  const characterDescription = buildCharactersVisualDescriptions(data, presentAll, {
-    extraByCharacterId: afterCharModsByCharacterId,
-  });
+  const afterCharModsByCharacterId =
+    modsForGeneration.afterCharModsByCharacterId;
+  const characterDescription = buildCharactersVisualDescriptions(
+    data,
+    presentAll,
+    {
+      extraByCharacterId: afterCharModsByCharacterId,
+    },
+  );
   const modsStart = modsForGeneration.start;
   const modsMiddle = modsForGeneration.middle;
   const modsEnd = modsForGeneration.end;
@@ -1397,14 +1643,24 @@ async function generateFreeImage() {
     'Write your image prompt. Press "Cancel" to abort generation.',
     POPUP_TYPE.INPUT,
     finalTrigger,
-    buildPromptPreviewPopupOptions({ rows: 12, okButton: "Generate", cancelButton: "Cancel" }),
+    buildPromptPreviewPopupOptions({
+      rows: 12,
+      okButton: "Generate",
+      cancelButton: "Cancel",
+    }),
   );
 
-  if (editedPrompt === null || editedPrompt === undefined || editedPrompt === false) {
+  if (
+    editedPrompt === null ||
+    editedPrompt === undefined ||
+    editedPrompt === false
+  ) {
     return;
   }
 
-  finalTrigger = String(editedPrompt || "").replace(/\r\n/g, "\n").trim();
+  finalTrigger = String(editedPrompt || "")
+    .replace(/\r\n/g, "\n")
+    .trim();
 
   // Expand macros added/edited by user in preview.
   finalTrigger = resolvePromptMacros(context, finalTrigger, data)
@@ -1436,7 +1692,10 @@ async function generateFreeImage() {
       throw new Error("Slash commands API unavailable");
     }
   } catch (error) {
-    toastr.error(`Error: ${error?.message || "Image generation failed"}`, "Character Details");
+    toastr.error(
+      `Error: ${error?.message || "Image generation failed"}`,
+      "Character Details",
+    );
   }
 }
 
@@ -1448,7 +1707,9 @@ function renderPreviewToggleState() {
   const isOn = shouldPreviewImagePrompts();
   footerPreviewToggle.toggleClass("is-on", isOn);
   const icon = footerPreviewToggle.find("i");
-  icon.removeClass("fa-eye fa-eye-slash").addClass(isOn ? "fa-eye" : "fa-eye-slash");
+  icon
+    .removeClass("fa-eye fa-eye-slash")
+    .addClass(isOn ? "fa-eye" : "fa-eye-slash");
 }
 
 function renderGuideToggleState() {
@@ -1459,7 +1720,9 @@ function renderGuideToggleState() {
   const isOn = shouldAddPromptGuide();
   footerGuideToggle.toggleClass("is-on", isOn);
   const icon = footerGuideToggle.find("i");
-  icon.removeClass("fa-crosshairs fa-xmark").addClass(isOn ? "fa-crosshairs" : "fa-xmark");
+  icon
+    .removeClass("fa-crosshairs fa-xmark")
+    .addClass(isOn ? "fa-crosshairs" : "fa-xmark");
 }
 
 function renderQuickResolutionMenu() {
@@ -1506,12 +1769,18 @@ function renderQuickResolutionMenu() {
   footerQuickResolutionMenu.html(optionsMarkup);
 
   const willOpen = quickResolutionMenuOpen && shouldShowQuickResolutionButton();
-  footerQuickResolutionMenu.toggleClass("opens-upward", willOpen && shouldPopupOpenUpward(footerQuickResolutionButton?.[0]));
+  footerQuickResolutionMenu.toggleClass(
+    "opens-upward",
+    willOpen && shouldPopupOpenUpward(footerQuickResolutionButton?.[0]),
+  );
   footerQuickResolutionMenu.toggleClass("is-open", willOpen);
 }
 
 function renderQuickResolutionState() {
-  if (!footerQuickResolutionButton?.length || !footerQuickResolutionWrap?.length) {
+  if (
+    !footerQuickResolutionButton?.length ||
+    !footerQuickResolutionWrap?.length
+  ) {
     return;
   }
 
@@ -1527,7 +1796,9 @@ function renderQuickResolutionState() {
   footerQuickResolutionButton.toggleClass("is-on", isActive);
   footerQuickResolutionButton.attr(
     "title",
-    isActive ? `Quick resolution: ${getQuickResolutionDisplayLabel(activeId)}` : "Quick resolution disabled",
+    isActive
+      ? `Quick resolution: ${getQuickResolutionDisplayLabel(activeId)}`
+      : "Quick resolution disabled",
   );
   renderQuickResolutionMenu();
 }
@@ -1550,7 +1821,10 @@ function updateFooterImageButtonsVisibility() {
     footerGuideToggle.toggleClass("displayNone", !show);
   }
   if (footerQuickResolutionWrap?.length) {
-    footerQuickResolutionWrap.toggleClass("displayNone", !shouldShowQuickResolutionButton());
+    footerQuickResolutionWrap.toggleClass(
+      "displayNone",
+      !shouldShowQuickResolutionButton(),
+    );
   }
   if (footerFreeGenerateButton?.length) {
     footerFreeGenerateButton.toggleClass("displayNone", !show);
@@ -1639,8 +1913,9 @@ function getGroupCharacterAvatarSourceByName(characterName, context) {
     return "";
   }
 
-  const group = (Array.isArray(context?.groups) ? context.groups : [])
-    .find((item) => String(item?.id) === String(context.groupId));
+  const group = (Array.isArray(context?.groups) ? context.groups : []).find(
+    (item) => String(item?.id) === String(context.groupId),
+  );
 
   const members = Array.isArray(group?.members) ? group.members : [];
   if (!members.length) {
@@ -1652,9 +1927,13 @@ function getGroupCharacterAvatarSourceByName(characterName, context) {
     return "";
   }
 
-  const allCharacters = Array.isArray(context?.characters) ? context.characters : [];
+  const allCharacters = Array.isArray(context?.characters)
+    ? context.characters
+    : [];
   for (const member of members) {
-    const match = allCharacters.find((item) => item?.avatar === member || item?.name === member);
+    const match = allCharacters.find(
+      (item) => item?.avatar === member || item?.name === member,
+    );
     if (!match) {
       continue;
     }
@@ -1676,9 +1955,14 @@ function getChatCharacterAvatarSource(context) {
   const activeCharacterId = context?.characterId;
   const activeCharacterIndex = Number(activeCharacterId);
   if (Number.isInteger(activeCharacterIndex) && activeCharacterIndex >= 0) {
-    const activeCharacter = Array.isArray(context?.characters) ? context.characters[activeCharacterIndex] : null;
+    const activeCharacter = Array.isArray(context?.characters)
+      ? context.characters[activeCharacterIndex]
+      : null;
     if (activeCharacter) {
-      const avatarSource = getAvatarSourceFromContextCharacter(activeCharacter, context);
+      const avatarSource = getAvatarSourceFromContextCharacter(
+        activeCharacter,
+        context,
+      );
       if (avatarSource) {
         return avatarSource;
       }
@@ -1690,8 +1974,11 @@ function getChatCharacterAvatarSource(context) {
     return "";
   }
 
-  const match = (Array.isArray(context?.characters) ? context.characters : [])
-    .find((character) => normalizeName(character?.name) === normalizeName(chatName));
+  const match = (
+    Array.isArray(context?.characters) ? context.characters : []
+  ).find(
+    (character) => normalizeName(character?.name) === normalizeName(chatName),
+  );
 
   if (!match) {
     return "";
@@ -1701,7 +1988,9 @@ function getChatCharacterAvatarSource(context) {
 }
 
 function getActivePersonaAvatarSource(context) {
-  const personaAvatar = String(context?.user_avatar || globalUserAvatar || "").trim();
+  const personaAvatar = String(
+    context?.user_avatar || globalUserAvatar || "",
+  ).trim();
   if (personaAvatar) {
     if (/^(data:|https?:)/i.test(personaAvatar)) {
       return personaAvatar;
@@ -1754,7 +2043,10 @@ function getCharacterAvatarSource(character, context, avatarMap) {
   }
 
   if (context?.groupId) {
-    const groupAvatar = getGroupCharacterAvatarSourceByName(character?.name, context);
+    const groupAvatar = getGroupCharacterAvatarSourceByName(
+      character?.name,
+      context,
+    );
     if (groupAvatar) {
       return groupAvatar;
     }
@@ -1779,15 +2071,23 @@ function buildSwitcherCharacters(data, maxItems = 7) {
     return characters;
   }
 
-  const presentCharacters = characters.filter((character) => character?.presence);
-  const notPresentCharacters = characters.filter((character) => !character?.presence);
+  const presentCharacters = characters.filter(
+    (character) => character?.presence,
+  );
+  const notPresentCharacters = characters.filter(
+    (character) => !character?.presence,
+  );
   const viewerId = data?.viewerCharacterId || null;
   const mainCharacterId = data?.mainCharacterId || null;
 
   const selected = [];
   const selectedIds = new Set();
   const addCharacter = (character) => {
-    if (!character?.id || selectedIds.has(character.id) || selected.length >= maxItems) {
+    if (
+      !character?.id ||
+      selectedIds.has(character.id) ||
+      selected.length >= maxItems
+    ) {
       return;
     }
     selected.push(character);
@@ -1832,12 +2132,16 @@ function renderFloatingCharacters() {
   floatingRoot.removeClass("hidden");
   const context = getContext();
   const avatarMap = readAvatarMap(context);
-  const characters = buildSwitcherCharacters(state, getSwitcherCharacterLimit());
+  const characters = buildSwitcherCharacters(
+    state,
+    getSwitcherCharacterLimit(),
+  );
   const items = characters
     .slice()
     .reverse()
     .map((character) => {
-      const activeClass = character.id === state.activeCharacterId ? "is-active" : "";
+      const activeClass =
+        character.id === state.activeCharacterId ? "is-active" : "";
       const avatarSrc = getCharacterAvatarSource(character, context, avatarMap);
       const avatarClass = avatarSrc ? "has-avatar" : "";
       const avatarHtml = avatarSrc
@@ -1874,28 +2178,42 @@ function renderManagerPanel() {
   const characters = Array.isArray(state?.characters) ? state.characters : [];
   const context = getContext();
   const avatarMap = readAvatarMap(context);
-  const listHtml = characters.length === 0
-    ? `<div class="character-manager__empty">No characters yet.</div>`
-    : characters
-      .map((character) => {
-        const activeClass = character.id === state.activeCharacterId ? "is-active" : "";
-        const mcClass = state.mainCharacterId === character.id ? "is-on" : "";
-        const viewerClass = state.viewerCharacterId === character.id ? "is-on" : "";
-        const presenceClass = character.presence ? "is-on" : "";
-        const uploadedAvatarKey = getAvatarKeyForCharacterName(character.name);
-        const hasUploadedAvatar = Boolean(uploadedAvatarKey && avatarMap?.[uploadedAvatarKey]);
-        const avatarSrc = getCharacterAvatarSource(character, context, avatarMap);
-        const avatarHtml = avatarSrc
-          ? `<img class="character-manager__avatar-image" src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(character.name || "Unnamed")}" />`
-          : escapeHtml(getInitials(character.name));
-        const removeAvatarButton = hasUploadedAvatar
-          ? `<span class="character-manager__avatar-remove" data-action="remove-avatar-character" data-character-id="${character.id}" title="Remove uploaded avatar" role="button" tabindex="0" aria-label="Remove uploaded avatar">
+  const listHtml =
+    characters.length === 0
+      ? `<div class="character-manager__empty">No characters yet.</div>`
+      : characters
+          .map((character) => {
+            const activeClass =
+              character.id === state.activeCharacterId ? "is-active" : "";
+            const mcClass =
+              state.mainCharacterId === character.id ? "is-on" : "";
+            const viewerClass =
+              state.viewerCharacterId === character.id ? "is-on" : "";
+            const presenceClass = character.presence ? "is-on" : "";
+            const uploadedAvatarKey = getAvatarKeyForCharacterName(
+              character.name,
+            );
+            const hasUploadedAvatar = Boolean(
+              uploadedAvatarKey && avatarMap?.[uploadedAvatarKey],
+            );
+            const avatarSrc = getCharacterAvatarSource(
+              character,
+              context,
+              avatarMap,
+            );
+            const avatarHtml = avatarSrc
+              ? `<img class="character-manager__avatar-image" src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(character.name || "Unnamed")}" />`
+              : escapeHtml(getInitials(character.name));
+            const removeAvatarButton = hasUploadedAvatar
+              ? `<span class="character-manager__avatar-remove" data-action="remove-avatar-character" data-character-id="${character.id}" title="Remove uploaded avatar" role="button" tabindex="0" aria-label="Remove uploaded avatar">
               <i class="fa-solid fa-xmark"></i>
             </span>`
-          : "";
-        const uploadAvatarTitle = hasUploadedAvatar ? "Upload an image (overwrite)" : "Upload an image";
+              : "";
+            const uploadAvatarTitle = hasUploadedAvatar
+              ? "Upload an image (overwrite)"
+              : "Upload an image";
 
-        return `
+            return `
           <div class="character-manager__row ${activeClass}" data-character-id="${character.id}" data-action="switch-character">
             <button class="character-manager__initials" type="button" data-action="upload-avatar-character" data-character-id="${character.id}" title="${uploadAvatarTitle}">
               ${avatarHtml}
@@ -1919,8 +2237,8 @@ function renderManagerPanel() {
             </button>
           </div>
         `;
-      })
-      .join("");
+          })
+          .join("");
 
   managerRoot.html(`
     <div class="character-manager__actions">
@@ -1957,7 +2275,11 @@ function getActiveCharacter(data) {
     return null;
   }
 
-  return data.characters.find((character) => character.id === data.activeCharacterId) || null;
+  return (
+    data.characters.find(
+      (character) => character.id === data.activeCharacterId,
+    ) || null
+  );
 }
 
 function ensureActiveCharacter(data) {
@@ -1971,12 +2293,17 @@ function ensureActiveGroup(character) {
     return;
   }
 
-  if (!Array.isArray(character.clothingGroups) || character.clothingGroups.length === 0) {
+  if (
+    !Array.isArray(character.clothingGroups) ||
+    character.clothingGroups.length === 0
+  ) {
     character.activeGroupId = null;
     return;
   }
 
-  const match = character.clothingGroups.find((group) => group.id === character.activeGroupId);
+  const match = character.clothingGroups.find(
+    (group) => group.id === character.activeGroupId,
+  );
   if (!match) {
     character.activeGroupId = character.clothingGroups[0].id;
   }
@@ -2004,8 +2331,11 @@ function sanitizeForbiddenText(value) {
 }
 
 function normalizeCustomField(field) {
-  const rawTarget = String(field?.target || "").trim().toLowerCase();
-  const target = rawTarget === "viewer" || rawTarget === "everyone" ? rawTarget : "mc";
+  const rawTarget = String(field?.target || "")
+    .trim()
+    .toLowerCase();
+  const target =
+    rawTarget === "viewer" || rawTarget === "everyone" ? rawTarget : "mc";
   return {
     label: String(field?.label || "").trim(),
     varName: String(field?.varName || "").trim(),
@@ -2041,7 +2371,9 @@ function formatVariableValue(value) {
 }
 
 function normalizeCharacterIdKey(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function parseEveryoneVarMap(rawValue) {
@@ -2081,7 +2413,9 @@ function getCustomFieldByVarName(varName) {
     return null;
   }
 
-  const fields = getCustomFieldsSettings().filter((field) => field.varName === normalizedVarName);
+  const fields = getCustomFieldsSettings().filter(
+    (field) => field.varName === normalizedVarName,
+  );
   if (!fields.length) {
     return null;
   }
@@ -2105,13 +2439,17 @@ function getCustomFieldGeneratorToggleForCharacter(data, field, characterId) {
     return false;
   }
 
-  const byCharacterId = rawToggle.byCharacterId && typeof rawToggle.byCharacterId === "object"
-    ? rawToggle.byCharacterId
-    : {};
+  const byCharacterId =
+    rawToggle.byCharacterId && typeof rawToggle.byCharacterId === "object"
+      ? rawToggle.byCharacterId
+      : {};
   const normalizedCharacterId = normalizeCharacterIdKey(characterId);
 
   if (rawToggle.linkedForAll === true) {
-    if (normalizedCharacterId && Object.prototype.hasOwnProperty.call(byCharacterId, normalizedCharacterId)) {
+    if (
+      normalizedCharacterId &&
+      Object.prototype.hasOwnProperty.call(byCharacterId, normalizedCharacterId)
+    ) {
       return byCharacterId[normalizedCharacterId] === true;
     }
 
@@ -2119,7 +2457,9 @@ function getCustomFieldGeneratorToggleForCharacter(data, field, characterId) {
     return firstValue === true;
   }
 
-  return normalizedCharacterId ? byCharacterId[normalizedCharacterId] === true : false;
+  return normalizedCharacterId
+    ? byCharacterId[normalizedCharacterId] === true
+    : false;
 }
 
 function isCustomFieldGeneratorLinkedForAll(data, field) {
@@ -2128,10 +2468,19 @@ function isCustomFieldGeneratorLinkedForAll(data, field) {
   }
 
   const rawToggle = data?.customFieldGeneratorToggles?.[field.varName];
-  return Boolean(rawToggle && typeof rawToggle === "object" && rawToggle.linkedForAll === true);
+  return Boolean(
+    rawToggle &&
+    typeof rawToggle === "object" &&
+    rawToggle.linkedForAll === true,
+  );
 }
 
-function setCustomFieldGeneratorLinkForAll(data, field, characterId, linkedForAll) {
+function setCustomFieldGeneratorLinkForAll(
+  data,
+  field,
+  characterId,
+  linkedForAll,
+) {
   if (field?.target !== "everyone") {
     return;
   }
@@ -2139,12 +2488,21 @@ function setCustomFieldGeneratorLinkForAll(data, field, characterId, linkedForAl
   data.customFieldGeneratorToggles = data.customFieldGeneratorToggles || {};
   const varName = field.varName;
   const existing = data.customFieldGeneratorToggles[varName];
-  const byCharacterId = existing && typeof existing === "object" && !Array.isArray(existing) && existing.byCharacterId && typeof existing.byCharacterId === "object"
-    ? { ...existing.byCharacterId }
-    : {};
+  const byCharacterId =
+    existing &&
+    typeof existing === "object" &&
+    !Array.isArray(existing) &&
+    existing.byCharacterId &&
+    typeof existing.byCharacterId === "object"
+      ? { ...existing.byCharacterId }
+      : {};
 
   const normalizedCharacterId = normalizeCharacterIdKey(characterId);
-  const currentCharacterState = getCustomFieldGeneratorToggleForCharacter(data, field, normalizedCharacterId);
+  const currentCharacterState = getCustomFieldGeneratorToggleForCharacter(
+    data,
+    field,
+    normalizedCharacterId,
+  );
   const characters = Array.isArray(data?.characters) ? data.characters : [];
 
   if (linkedForAll) {
@@ -2163,7 +2521,12 @@ function setCustomFieldGeneratorLinkForAll(data, field, characterId, linkedForAl
   };
 }
 
-function setCustomFieldGeneratorToggleForCharacter(data, field, characterId, enabled) {
+function setCustomFieldGeneratorToggleForCharacter(
+  data,
+  field,
+  characterId,
+  enabled,
+) {
   const varName = field?.varName;
   if (!varName) {
     return;
@@ -2178,10 +2541,20 @@ function setCustomFieldGeneratorToggleForCharacter(data, field, characterId, ena
   }
 
   const existing = data.customFieldGeneratorToggles[varName];
-  const linkedForAll = Boolean(existing && typeof existing === "object" && !Array.isArray(existing) && existing.linkedForAll === true);
-  const byCharacterId = existing && typeof existing === "object" && !Array.isArray(existing) && existing.byCharacterId && typeof existing.byCharacterId === "object"
-    ? { ...existing.byCharacterId }
-    : {};
+  const linkedForAll = Boolean(
+    existing &&
+    typeof existing === "object" &&
+    !Array.isArray(existing) &&
+    existing.linkedForAll === true,
+  );
+  const byCharacterId =
+    existing &&
+    typeof existing === "object" &&
+    !Array.isArray(existing) &&
+    existing.byCharacterId &&
+    typeof existing.byCharacterId === "object"
+      ? { ...existing.byCharacterId }
+      : {};
 
   const normalizedCharacterId = normalizeCharacterIdKey(characterId);
   if (!normalizedCharacterId) {
@@ -2189,7 +2562,9 @@ function setCustomFieldGeneratorToggleForCharacter(data, field, characterId, ena
   }
 
   if (linkedForAll) {
-    for (const character of Array.isArray(data?.characters) ? data.characters : []) {
+    for (const character of Array.isArray(data?.characters)
+      ? data.characters
+      : []) {
       const nextCharacterId = normalizeCharacterIdKey(character?.id);
       if (!nextCharacterId) {
         continue;
@@ -2216,18 +2591,31 @@ function getCustomFieldsForCharacter(character, context) {
   for (const field of fields) {
     let value;
     if (field.target === "everyone") {
-      const valueByCharacterId = parseEveryoneVarMap(context.variables?.local?.get?.(field.varName));
-      value = formatVariableValue(valueByCharacterId[normalizeCharacterIdKey(character.id)]);
+      const valueByCharacterId = parseEveryoneVarMap(
+        context.variables?.local?.get?.(field.varName),
+      );
+      value = formatVariableValue(
+        valueByCharacterId[normalizeCharacterIdKey(character.id)],
+      );
     } else {
-      const targetId = field.target === "viewer" ? state?.viewerCharacterId : state?.mainCharacterId;
+      const targetId =
+        field.target === "viewer"
+          ? state?.viewerCharacterId
+          : state?.mainCharacterId;
       if (!targetId || targetId !== character.id) {
         continue;
       }
 
-      value = formatVariableValue(context.variables?.local?.get?.(field.varName));
+      value = formatVariableValue(
+        context.variables?.local?.get?.(field.varName),
+      );
     }
 
-    const enabled = getCustomFieldGeneratorToggleForCharacter(state, field, character.id);
+    const enabled = getCustomFieldGeneratorToggleForCharacter(
+      state,
+      field,
+      character.id,
+    );
     const linkedForAll = isCustomFieldGeneratorLinkedForAll(state, field);
     results.push({
       label: field.label,
@@ -2253,7 +2641,9 @@ function refreshCustomFieldInputs(context) {
   }
 
   const fields = getCustomFieldsForCharacter(character, context);
-  const valueByVar = new Map(fields.map((field) => [field.varName, field.value]));
+  const valueByVar = new Map(
+    fields.map((field) => [field.varName, field.value]),
+  );
 
   panelRoot.find("[data-field='custom-field-value']").each((index, element) => {
     const $element = $(element);
@@ -2275,7 +2665,9 @@ function applyViewerFromPersona(data, context) {
     return;
   }
 
-  const match = data.characters.find((character) => normalizeName(character.name) === personaName);
+  const match = data.characters.find(
+    (character) => normalizeName(character.name) === personaName,
+  );
   if (match) {
     data.viewerCharacterId = match.id;
   }
@@ -2310,7 +2702,9 @@ function applyMainCharacterFromChat(data, context) {
     return;
   }
 
-  const match = data.characters.find((character) => normalizeName(character.name) === normalizeName(chatName));
+  const match = data.characters.find(
+    (character) => normalizeName(character.name) === normalizeName(chatName),
+  );
   if (match) {
     data.mainCharacterId = match.id;
   }
@@ -2321,15 +2715,15 @@ function getChatName(context) {
   if (context.name2) {
     return context.name2;
   }
-  
+
   // For group chats
   if (context.groupId && context.groups) {
-    const group = context.groups.find(g => g.id === context.groupId);
+    const group = context.groups.find((g) => g.id === context.groupId);
     if (group?.name) {
       return group.name;
     }
   }
-  
+
   return null;
 }
 
@@ -2338,7 +2732,9 @@ function findGroup(character, groupId) {
 }
 
 function findCharacterById(data, characterId) {
-  return data.characters.find((character) => character.id === characterId) || null;
+  return (
+    data.characters.find((character) => character.id === characterId) || null
+  );
 }
 
 function findLayer(layers, layerId) {
@@ -2436,7 +2832,9 @@ function isDescendantLayer(layer, targetId) {
 }
 
 function clearDragIndicators() {
-  panelRoot.find(".clothing-layer").removeClass("drop-before drop-after drop-child");
+  panelRoot
+    .find(".clothing-layer")
+    .removeClass("drop-before drop-after drop-child");
 }
 
 function resolveLayerElement(event) {
@@ -2501,10 +2899,12 @@ function renderLayers(layers, depth, inheritedOcclusion) {
       const layerEffect = getLayerEffect(layer);
       const nextOcclusion = combineOcclusion(inheritedOcclusion, layerEffect);
       const visibilityOverride = layer.visibilityOverride === true;
-      const canToggleVisibilityOverride = displayOcclusion === "full" || visibilityOverride;
-      const effectiveOcclusion = visibilityOverride && displayOcclusion === "full"
-        ? "partial"
-        : displayOcclusion;
+      const canToggleVisibilityOverride =
+        displayOcclusion === "full" || visibilityOverride;
+      const effectiveOcclusion =
+        visibilityOverride && displayOcclusion === "full"
+          ? "partial"
+          : displayOcclusion;
       const occlusionClass =
         effectiveOcclusion === "full"
           ? "layer--occluded-full"
@@ -2518,12 +2918,19 @@ function renderLayers(layers, depth, inheritedOcclusion) {
             ? "layer--state-partial"
             : "layer--state-on";
 
-      const stateLabel = layer.state === "on" ? "On" : layer.state === "partial" ? "Partial" : "Off";
+      const stateLabel =
+        layer.state === "on"
+          ? "On"
+          : layer.state === "partial"
+            ? "Partial"
+            : "Off";
       const hasLockedChild = checkHasLockedChild(layer.children);
       const canDelete = !layer.locked && !hasLockedChild;
       const deleteClass = canDelete ? "" : "is-disabled";
       const lockIcon = layer.locked ? "fa-lock" : "fa-lock-open";
-      const lockTitle = layer.locked ? "Locked (LLM cannot modify)" : "Unlocked";
+      const lockTitle = layer.locked
+        ? "Locked (LLM cannot modify)"
+        : "Unlocked";
       const visibilityIcon = visibilityOverride ? "fa-eye" : "fa-eye-slash";
       const visibilityClass = visibilityOverride ? "is-on" : "";
       const visibilityTitle = visibilityOverride
@@ -2535,7 +2942,11 @@ function renderLayers(layers, depth, inheritedOcclusion) {
           </button>`
         : "";
 
-      const childrenHtml = renderLayers(layer.children, depth + 1, nextOcclusion);
+      const childrenHtml = renderLayers(
+        layer.children,
+        depth + 1,
+        nextOcclusion,
+      );
 
       return `
         <div class="clothing-layer ${occlusionClass} ${stateClass}" data-layer-id="${layer.id}" style="--depth:${depth}">
@@ -2565,7 +2976,7 @@ function renderLayers(layers, depth, inheritedOcclusion) {
 
 function renderGroups(character) {
   if (!character.clothingGroups.length) {
-    return "<div class=\"empty-hint\">No outfits yet.</div>";
+    return '<div class="empty-hint">No outfits yet.</div>';
   }
 
   return character.clothingGroups
@@ -2579,7 +2990,9 @@ function renderGroups(character) {
       const canDelete = !group.locked && !hasLockedChild;
       const deleteClass = canDelete ? "" : "is-disabled";
       const lockIcon = group.locked ? "fa-lock" : "fa-lock-open";
-      const lockTitle = group.locked ? "Locked (LLM cannot modify)" : "Unlocked";
+      const lockTitle = group.locked
+        ? "Locked (LLM cannot modify)"
+        : "Unlocked";
       const contentHtml = renderLayers(group.layers, 0, "none");
 
       return `
@@ -2624,7 +3037,9 @@ function renderCharacter(character) {
   const context = getContext();
   const avatarMap = readAvatarMap(context);
   const uploadedAvatarKey = getAvatarKeyForCharacterName(character.name);
-  const hasUploadedAvatar = Boolean(uploadedAvatarKey && avatarMap?.[uploadedAvatarKey]);
+  const hasUploadedAvatar = Boolean(
+    uploadedAvatarKey && avatarMap?.[uploadedAvatarKey],
+  );
   const avatarSrc = getCharacterAvatarSource(character, context, avatarMap);
   const avatarHtml = avatarSrc
     ? `<img class="character-manager__avatar-image" src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(character.name || "Unnamed")}" />`
@@ -2634,17 +3049,20 @@ function renderCharacter(character) {
         <i class="fa-solid fa-xmark"></i>
       </span>`
     : "";
-  const uploadAvatarTitle = hasUploadedAvatar ? "Upload an image (overwrite)" : "Upload an image";
+  const uploadAvatarTitle = hasUploadedAvatar
+    ? "Upload an image (overwrite)"
+    : "Upload an image";
   const customFields = getCustomFieldsForCharacter(character, context);
   const customFieldsHtml = customFields
     .map((field) => {
-      const linkToggleButton = field.target === "everyone"
-        ? `
+      const linkToggleButton =
+        field.target === "everyone"
+          ? `
           <button class="group-action icon-button custom-field-toggle ${field.linkedForAll ? "is-on" : ""}" type="button" data-action="toggle-custom-field-link" data-var-name="${escapeHtml(field.varName)}" title="${field.linkedForAll ? "Unlink send state for all chars" : "Link send state for all chars"}">
             <i class="fa-solid ${field.linkedForAll ? "fa-link" : "fa-link-slash"}"></i>
           </button>
         `
-        : "";
+          : "";
 
       return `
       <div class="character-details__section">
@@ -2770,7 +3188,10 @@ function persistDescriptionsForCurrentChat(context, data) {
   context.variables?.local?.set?.("descriptions", descriptionsText);
 
   if (data?.lastGenDescriptionsTarget) {
-    const genDescriptions = buildGenDescriptions(data, data.lastGenDescriptionsTarget);
+    const genDescriptions = buildGenDescriptions(
+      data,
+      data.lastGenDescriptionsTarget,
+    );
     context.variables?.local?.set?.("genDescriptions", genDescriptions);
   }
 }
@@ -2778,26 +3199,26 @@ function persistDescriptionsForCurrentChat(context, data) {
 function saveAndRender() {
   const context = getContext();
   state = normalizeCharacterDetails(state, context);
-  
+
   // Reload to get the latest lastGenDescriptionsTarget from storage
   const savedData = loadCharacterDetails(context);
   state.lastGenDescriptionsTarget = savedData.lastGenDescriptionsTarget;
-  
+
   ensureActiveGroups(state);
   saveCharacterDetails(context, state);
   persistDescriptionsForCurrentChat(context, state);
-  
+
   renderPanel();
 }
 
 function updateDescriptionsOnly() {
   const context = getContext();
   state = normalizeCharacterDetails(state, context);
-  
+
   // Reload to get the latest lastGenDescriptionsTarget from storage
   const savedData = loadCharacterDetails(context);
   state.lastGenDescriptionsTarget = savedData.lastGenDescriptionsTarget;
-  
+
   ensureActiveGroups(state);
   saveCharacterDetails(context, state);
   persistDescriptionsForCurrentChat(context, state);
@@ -2823,7 +3244,10 @@ async function handleAddCharacter() {
   state.characters.push(newCharacter);
   state.activeCharacterId = newCharacter.id;
 
-  if (normalizeName(newCharacter.name) && normalizeName(newCharacter.name) === normalizeName(context?.name1)) {
+  if (
+    normalizeName(newCharacter.name) &&
+    normalizeName(newCharacter.name) === normalizeName(context?.name1)
+  ) {
     state.viewerCharacterId = newCharacter.id;
   }
 
@@ -2891,13 +3315,19 @@ async function handleUploadCharacterAvatar(character) {
 
   let dataUrl = await readFileAsDataUrl(file);
   if (!dataUrl.startsWith("data:image/")) {
-    toastr.error("Selected file is not a supported image.", "Character Details");
+    toastr.error(
+      "Selected file is not a supported image.",
+      "Character Details",
+    );
     return;
   }
 
   const key = getAvatarKeyForCharacterName(character.name);
   if (!key) {
-    toastr.warning("Set character name before uploading avatar.", "Character Details");
+    toastr.warning(
+      "Set character name before uploading avatar.",
+      "Character Details",
+    );
     return;
   }
 
@@ -2932,45 +3362,53 @@ function handleRemoveCharacterAvatar(character) {
 
 async function setupAutoBackgroundAfterGeneration(context) {
   // Wait a moment for the image to be rendered in chat
-  await new Promise(resolve => setTimeout(resolve, 1200));
-  
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
   console.log("[ST Extension] Looking for generated background image...");
-  
+
   // Look for the most recent image in the chat
   const chatContainer = $("#chat");
   if (!chatContainer.length) {
     console.log("[ST Extension] Chat container not found");
     return;
   }
-  
+
   const messages = chatContainer.find(".mes").toArray().reverse();
   console.log(`[ST Extension] Scanning ${messages.length} messages`);
-  
+
   for (const msgElement of messages) {
     const imageElements = $(msgElement).find("img");
-    console.log(`[ST Extension] Found ${imageElements.length} images in message`);
-    
+    console.log(
+      `[ST Extension] Found ${imageElements.length} images in message`,
+    );
+
     if (imageElements.length > 0) {
       const imageElement = $(imageElements).last();
       const imageSrc = imageElement.attr("src");
-      console.log(`[ST Extension] Image src: ${imageSrc?.substring(0, 100)}...`);
-      
+      console.log(
+        `[ST Extension] Image src: ${imageSrc?.substring(0, 100)}...`,
+      );
+
       if (imageSrc) {
         // Auto-set background if it's a data URL (our generated image)
         try {
-          await applyBackgroundFromImage(imageSrc, () => getActiveCharacter(state));
+          await applyBackgroundFromImage(imageSrc, () =>
+            getActiveCharacter(state),
+          );
           toastr.success("Background set automatically.", "Character Details");
           console.log("[ST Extension] Background applied successfully");
         } catch (error) {
           console.error("[ST Extension] Failed to set background:", error);
-          toastr.error("Failed to set background: " + error?.message, "Character Details");
+          toastr.error(
+            "Failed to set background: " + error?.message,
+            "Character Details",
+          );
         }
       }
       break;
     }
   }
 }
-
 
 function getDefinedCustomFieldsByVarName() {
   const byVarName = new Map();
@@ -2989,9 +3427,10 @@ function collectCustomFieldValues(context) {
   const fieldsByVarName = getDefinedCustomFieldsByVarName();
   for (const [varName, field] of fieldsByVarName.entries()) {
     const rawValue = context.variables?.local?.get?.(varName);
-    values[varName] = field.target === "everyone"
-      ? parseEveryoneVarMap(rawValue)
-      : formatVariableValue(rawValue);
+    values[varName] =
+      field.target === "everyone"
+        ? parseEveryoneVarMap(rawValue)
+        : formatVariableValue(rawValue);
   }
   return values;
 }
@@ -3008,9 +3447,10 @@ function normalizeImportedCustomFieldValues(rawValues) {
       continue;
     }
 
-    normalized[varName] = field.target === "everyone"
-      ? parseEveryoneVarMap(rawValues[varName])
-      : formatVariableValue(rawValues[varName]);
+    normalized[varName] =
+      field.target === "everyone"
+        ? parseEveryoneVarMap(rawValues[varName])
+        : formatVariableValue(rawValues[varName]);
   }
 
   return normalized;
@@ -3022,12 +3462,16 @@ function applyImportedCustomFieldValues(context, values) {
 
   for (const [varName, field] of fieldsByVarName.entries()) {
     if (Object.prototype.hasOwnProperty.call(normalized, varName)) {
-      const nextValue = field.target === "everyone"
-        ? parseEveryoneVarMap(normalized[varName])
-        : formatVariableValue(normalized[varName]);
+      const nextValue =
+        field.target === "everyone"
+          ? parseEveryoneVarMap(normalized[varName])
+          : formatVariableValue(normalized[varName]);
       context.variables?.local?.set?.(varName, nextValue);
     } else {
-      context.variables?.local?.set?.(varName, field.target === "everyone" ? {} : "");
+      context.variables?.local?.set?.(
+        varName,
+        field.target === "everyone" ? {} : "",
+      );
     }
   }
 }
@@ -3036,7 +3480,9 @@ function collectCharacterAvatars(data, context) {
   const avatarMap = readAvatarMap(context);
   const result = {};
 
-  for (const character of Array.isArray(data?.characters) ? data.characters : []) {
+  for (const character of Array.isArray(data?.characters)
+    ? data.characters
+    : []) {
     const key = getAvatarKeyForCharacterName(character?.name);
     if (!key || !avatarMap[key]) {
       continue;
@@ -3061,7 +3507,12 @@ function normalizeImportedCharacterAvatars(rawValues, data) {
   const result = {};
   for (const [name, value] of Object.entries(rawValues)) {
     const key = getAvatarKeyForCharacterName(name);
-    if (!key || !allowedNames.has(key) || typeof value !== "string" || !value.trim()) {
+    if (
+      !key ||
+      !allowedNames.has(key) ||
+      typeof value !== "string" ||
+      !value.trim()
+    ) {
       continue;
     }
     result[key] = value;
@@ -3082,9 +3533,16 @@ function applyImportedCharacterAvatars(context, avatars, data) {
     delete nextMap[name];
   }
 
-  for (const [name, value] of Object.entries(avatars && typeof avatars === "object" ? avatars : {})) {
+  for (const [name, value] of Object.entries(
+    avatars && typeof avatars === "object" ? avatars : {},
+  )) {
     const key = getAvatarKeyForCharacterName(name);
-    if (!key || !allowedNames.has(key) || typeof value !== "string" || !value.trim()) {
+    if (
+      !key ||
+      !allowedNames.has(key) ||
+      typeof value !== "string" ||
+      !value.trim()
+    ) {
       continue;
     }
     nextMap[key] = value;
@@ -3098,7 +3556,9 @@ function cloneValue(value) {
 }
 
 function getCurrentPersonaId(context) {
-  const personaId = String(context?.user_avatar || globalUserAvatar || "").trim();
+  const personaId = String(
+    context?.user_avatar || globalUserAvatar || "",
+  ).trim();
   return personaId || "";
 }
 
@@ -3126,12 +3586,17 @@ function readPersonaCharacterMap(context) {
 
 function writePersonaCharacterMap(context, value) {
   const map = value && typeof value === "object" ? value : {};
-  context.variables?.global?.set?.(PERSONA_CHARACTER_STORAGE_KEY, JSON.stringify(map));
+  context.variables?.global?.set?.(
+    PERSONA_CHARACTER_STORAGE_KEY,
+    JSON.stringify(map),
+  );
 }
 
 function buildViewerPersonaPayload(data, context) {
   const viewerCharacter = data?.viewerCharacterId
-    ? (data.characters || []).find((character) => character.id === data.viewerCharacterId) || null
+    ? (data.characters || []).find(
+        (character) => character.id === data.viewerCharacterId,
+      ) || null
     : null;
 
   if (!viewerCharacter) {
@@ -3148,7 +3613,10 @@ function buildViewerPersonaPayload(data, context) {
 
   const avatarMap = readAvatarMap(context);
   const avatarKey = getAvatarKeyForCharacterName(viewerCharacter.name);
-  const avatar = avatarKey && avatarMap[avatarKey] ? avatarMap[avatarKey] : getCharacterAvatarSource(viewerCharacter, context, avatarMap);
+  const avatar =
+    avatarKey && avatarMap[avatarKey]
+      ? avatarMap[avatarKey]
+      : getCharacterAvatarSource(viewerCharacter, context, avatarMap);
 
   return {
     character: cloneValue(viewerCharacter),
@@ -3186,10 +3654,18 @@ async function handleSaveViewerToPersona() {
 
   map[personaId] = payload;
   writePersonaCharacterMap(context, map);
-  toastr.success("Viewer character saved to current persona.", "Character Details");
+  toastr.success(
+    "Viewer character saved to current persona.",
+    "Character Details",
+  );
 }
 
-function upsertPersonaCharacterIntoState(data, context, personaEntry, options = {}) {
+function upsertPersonaCharacterIntoState(
+  data,
+  context,
+  personaEntry,
+  options = {},
+) {
   const overwriteViewer = options.overwriteViewer === true;
   const sourceCharacter = personaEntry?.character;
   if (!sourceCharacter || typeof sourceCharacter !== "object") {
@@ -3197,7 +3673,9 @@ function upsertPersonaCharacterIntoState(data, context, personaEntry, options = 
   }
 
   const viewerCharacter = data.viewerCharacterId
-    ? (data.characters || []).find((character) => character.id === data.viewerCharacterId) || null
+    ? (data.characters || []).find(
+        (character) => character.id === data.viewerCharacterId,
+      ) || null
     : null;
 
   let targetId = sourceCharacter.id;
@@ -3205,16 +3683,21 @@ function upsertPersonaCharacterIntoState(data, context, personaEntry, options = 
     targetId = viewerCharacter.id;
   }
 
-  const normalized = normalizeCharacterDetails({
-    characters: [{ ...cloneValue(sourceCharacter), id: targetId }],
-  }, context);
+  const normalized = normalizeCharacterDetails(
+    {
+      characters: [{ ...cloneValue(sourceCharacter), id: targetId }],
+    },
+    context,
+  );
   const nextCharacter = normalized.characters?.[0] || null;
   if (!nextCharacter) {
     return false;
   }
 
   if (overwriteViewer && viewerCharacter) {
-    const index = data.characters.findIndex((character) => character.id === viewerCharacter.id);
+    const index = data.characters.findIndex(
+      (character) => character.id === viewerCharacter.id,
+    );
     if (index !== -1) {
       data.characters[index] = nextCharacter;
       const oldAvatarKey = getAvatarKeyForCharacterName(viewerCharacter.name);
@@ -3237,7 +3720,11 @@ function upsertPersonaCharacterIntoState(data, context, personaEntry, options = 
   data.activeCharacterId = nextCharacter.id;
 
   const nextAvatarKey = getAvatarKeyForCharacterName(nextCharacter.name);
-  if (nextAvatarKey && typeof personaEntry.avatar === "string" && personaEntry.avatar.trim()) {
+  if (
+    nextAvatarKey &&
+    typeof personaEntry.avatar === "string" &&
+    personaEntry.avatar.trim()
+  ) {
     const avatarMap = readAvatarMap(context);
     avatarMap[nextAvatarKey] = personaEntry.avatar;
     writeAvatarMap(context, avatarMap);
@@ -3261,11 +3748,19 @@ async function handleAddCharacterFromPersona() {
   const map = readPersonaCharacterMap(context);
   const entry = map[personaId];
   if (!entry?.character) {
-    toastr.warning("No saved character for current persona.", "Character Details");
+    toastr.warning(
+      "No saved character for current persona.",
+      "Character Details",
+    );
     return;
   }
 
-  const hasViewer = Boolean(state.viewerCharacterId && state.characters.some((character) => character.id === state.viewerCharacterId));
+  const hasViewer = Boolean(
+    state.viewerCharacterId &&
+    state.characters.some(
+      (character) => character.id === state.viewerCharacterId,
+    ),
+  );
   if (hasViewer) {
     const shouldOverwrite = await Popup.show.confirm(
       "Overwrite viewer character",
@@ -3277,7 +3772,9 @@ async function handleAddCharacterFromPersona() {
     }
   }
 
-  const updated = upsertPersonaCharacterIntoState(state, context, entry, { overwriteViewer: hasViewer });
+  const updated = upsertPersonaCharacterIntoState(state, context, entry, {
+    overwriteViewer: hasViewer,
+  });
   if (!updated) {
     toastr.error("Failed to load character from persona.", "Character Details");
     return;
@@ -3307,7 +3804,9 @@ function autoAddCharacterFromPersonaIfExists(data, context) {
     return false;
   }
 
-  return upsertPersonaCharacterIntoState(data, context, entry, { overwriteViewer: false });
+  return upsertPersonaCharacterIntoState(data, context, entry, {
+    overwriteViewer: false,
+  });
 }
 
 function sanitizeExportFileName(value) {
@@ -3399,8 +3898,14 @@ async function handleImportCharacterDetails() {
     const currentData = loadCharacterDetails(context);
     const currentCustomFieldValues = collectCustomFieldValues(context);
     const currentAvatars = collectCharacterAvatars(currentData, context);
-    const hasImportedCustomFieldValues = Object.prototype.hasOwnProperty.call(parsed || {}, "customFieldValues");
-    const hasImportedAvatars = Object.prototype.hasOwnProperty.call(parsed || {}, "avatars");
+    const hasImportedCustomFieldValues = Object.prototype.hasOwnProperty.call(
+      parsed || {},
+      "customFieldValues",
+    );
+    const hasImportedAvatars = Object.prototype.hasOwnProperty.call(
+      parsed || {},
+      "avatars",
+    );
     const importedCustomFieldValues = hasImportedCustomFieldValues
       ? normalizeImportedCustomFieldValues(parsed.customFieldValues)
       : currentCustomFieldValues;
@@ -3421,17 +3926,23 @@ async function handleImportCharacterDetails() {
     };
 
     showCharacterDetailsDiff(currentPayload, importedPayload, (nextData) => {
-      const { customFieldValues, avatars, ...nextCharacterData } = nextData || {};
+      const { customFieldValues, avatars, ...nextCharacterData } =
+        nextData || {};
       applyImportedCustomFieldValues(context, customFieldValues);
       applyImportedCharacterAvatars(context, avatars, nextCharacterData);
-      for (const character of Array.isArray(nextCharacterData?.characters) ? nextCharacterData.characters : []) {
+      for (const character of Array.isArray(nextCharacterData?.characters)
+        ? nextCharacterData.characters
+        : []) {
         collapseOutfitsToActiveOnly(character);
       }
       setCharacterDetailsData(nextCharacterData);
       toastr.success("Character details imported.", "Character Details");
     });
   } catch (error) {
-    toastr.error(`Import failed: ${error?.message || "Invalid JSON file"}`, "Character Details");
+    toastr.error(
+      `Import failed: ${error?.message || "Invalid JSON file"}`,
+      "Character Details",
+    );
   }
 }
 
@@ -3485,7 +3996,10 @@ function handlePanelInput(event) {
   }
 
   if (field === "layer-name") {
-    const layer = findLayer(character.clothingGroups.flatMap((group) => group.layers), target.dataset.layerId);
+    const layer = findLayer(
+      character.clothingGroups.flatMap((group) => group.layers),
+      target.dataset.layerId,
+    );
     if (layer) {
       const sanitizedValue = sanitizeForbiddenText(target.value);
       if (target.value !== sanitizedValue) {
@@ -3503,7 +4017,9 @@ function handlePanelInput(event) {
       const customField = getCustomFieldByVarName(varName);
       if (customField?.target === "everyone") {
         const characterId = normalizeCharacterIdKey(character.id);
-        const valueByCharacterId = parseEveryoneVarMap(context.variables?.local?.get?.(varName));
+        const valueByCharacterId = parseEveryoneVarMap(
+          context.variables?.local?.get?.(varName),
+        );
         valueByCharacterId[characterId] = target.value;
         context.variables?.local?.set?.(varName, valueByCharacterId);
       } else {
@@ -3516,7 +4032,9 @@ function handlePanelInput(event) {
 
 async function handlePanelClick(event) {
   const action = event.target.dataset.action;
-  const actionOwner = action ? event.target : event.target.closest("[data-action]");
+  const actionOwner = action
+    ? event.target
+    : event.target.closest("[data-action]");
   const resolvedAction = actionOwner?.dataset.action;
   if (!resolvedAction) {
     return;
@@ -3565,7 +4083,10 @@ async function handlePanelClick(event) {
 
       const requestText = String(request || "").trim();
       if (!requestText) {
-        toastr.warning("Character request cannot be empty.", "Character Details");
+        toastr.warning(
+          "Character request cannot be empty.",
+          "Character Details",
+        );
         return;
       }
 
@@ -3592,7 +4113,9 @@ async function handlePanelClick(event) {
 
   if (resolvedAction === "upload-avatar-character") {
     const characterId = actionOwner.dataset.characterId;
-    const targetCharacter = characterId ? findCharacterById(state, characterId) : null;
+    const targetCharacter = characterId
+      ? findCharacterById(state, characterId)
+      : null;
     if (targetCharacter) {
       return handleUploadCharacterAvatar(targetCharacter);
     }
@@ -3600,14 +4123,18 @@ async function handlePanelClick(event) {
 
   if (resolvedAction === "remove-avatar-character") {
     const characterId = actionOwner.dataset.characterId;
-    const targetCharacter = characterId ? findCharacterById(state, characterId) : null;
+    const targetCharacter = characterId
+      ? findCharacterById(state, characterId)
+      : null;
     if (targetCharacter) {
       return handleRemoveCharacterAvatar(targetCharacter);
     }
   }
 
   if (resolvedAction === "switch-character") {
-    const characterId = actionOwner.dataset.characterId || actionOwner.closest("[data-character-id]")?.dataset.characterId;
+    const characterId =
+      actionOwner.dataset.characterId ||
+      actionOwner.closest("[data-character-id]")?.dataset.characterId;
     if (characterId && findCharacterById(state, characterId)) {
       state.activeCharacterId = characterId;
       return saveAndRender();
@@ -3616,7 +4143,9 @@ async function handlePanelClick(event) {
 
   if (resolvedAction === "toggle-presence-character") {
     const characterId = actionOwner.dataset.characterId;
-    const targetCharacter = characterId ? findCharacterById(state, characterId) : null;
+    const targetCharacter = characterId
+      ? findCharacterById(state, characterId)
+      : null;
     if (targetCharacter) {
       targetCharacter.presence = !targetCharacter.presence;
       return saveAndRender();
@@ -3625,18 +4154,28 @@ async function handlePanelClick(event) {
 
   if (resolvedAction === "toggle-mc-character") {
     const characterId = actionOwner.dataset.characterId;
-    const targetCharacter = characterId ? findCharacterById(state, characterId) : null;
+    const targetCharacter = characterId
+      ? findCharacterById(state, characterId)
+      : null;
     if (targetCharacter) {
-      state.mainCharacterId = state.mainCharacterId === targetCharacter.id ? null : targetCharacter.id;
+      state.mainCharacterId =
+        state.mainCharacterId === targetCharacter.id
+          ? null
+          : targetCharacter.id;
       return saveAndRender();
     }
   }
 
   if (resolvedAction === "toggle-viewer-character") {
     const characterId = actionOwner.dataset.characterId;
-    const targetCharacter = characterId ? findCharacterById(state, characterId) : null;
+    const targetCharacter = characterId
+      ? findCharacterById(state, characterId)
+      : null;
     if (targetCharacter) {
-      state.viewerCharacterId = state.viewerCharacterId === targetCharacter.id ? null : targetCharacter.id;
+      state.viewerCharacterId =
+        state.viewerCharacterId === targetCharacter.id
+          ? null
+          : targetCharacter.id;
       return saveAndRender();
     }
   }
@@ -3644,9 +4183,14 @@ async function handlePanelClick(event) {
   if (resolvedAction === "delete-character") {
     const characterId = actionOwner.dataset.characterId;
     if (characterId) {
-      const removedCharacter = state.characters.find((characterItem) => characterItem.id === characterId) || null;
+      const removedCharacter =
+        state.characters.find(
+          (characterItem) => characterItem.id === characterId,
+        ) || null;
       const removedCharacterName = removedCharacter?.name;
-      state.characters = state.characters.filter((characterItem) => characterItem.id !== characterId);
+      state.characters = state.characters.filter(
+        (characterItem) => characterItem.id !== characterId,
+      );
       if (state.activeCharacterId === characterId) {
         state.activeCharacterId = null;
       }
@@ -3696,7 +4240,11 @@ async function handlePanelClick(event) {
         return;
       }
 
-      await runOutfitGenerationForCharacter(character.id, requestText, $(actionOwner));
+      await runOutfitGenerationForCharacter(
+        character.id,
+        requestText,
+        $(actionOwner),
+      );
     })();
     return;
   }
@@ -3718,7 +4266,9 @@ async function handlePanelClick(event) {
   }
 
   if (resolvedAction === "delete-group" && group) {
-    character.clothingGroups = character.clothingGroups.filter((item) => item.id !== group.id);
+    character.clothingGroups = character.clothingGroups.filter(
+      (item) => item.id !== group.id,
+    );
     ensureActiveGroup(character);
     return saveAndRender();
   }
@@ -3764,12 +4314,14 @@ async function handlePanelClick(event) {
   }
 
   if (resolvedAction === "toggle-viewer") {
-    state.viewerCharacterId = state.viewerCharacterId === character.id ? null : character.id;
+    state.viewerCharacterId =
+      state.viewerCharacterId === character.id ? null : character.id;
     return saveAndRender();
   }
 
   if (resolvedAction === "toggle-mc") {
-    state.mainCharacterId = state.mainCharacterId === character.id ? null : character.id;
+    state.mainCharacterId =
+      state.mainCharacterId === character.id ? null : character.id;
     return saveAndRender();
   }
 
@@ -3781,8 +4333,17 @@ async function handlePanelClick(event) {
         return;
       }
 
-      const currentEnabled = getCustomFieldGeneratorToggleForCharacter(state, customField, character.id);
-      setCustomFieldGeneratorToggleForCharacter(state, customField, character.id, !currentEnabled);
+      const currentEnabled = getCustomFieldGeneratorToggleForCharacter(
+        state,
+        customField,
+        character.id,
+      );
+      setCustomFieldGeneratorToggleForCharacter(
+        state,
+        customField,
+        character.id,
+        !currentEnabled,
+      );
       return saveAndRender();
     }
   }
@@ -3795,14 +4356,25 @@ async function handlePanelClick(event) {
         return;
       }
 
-      const nextLinkedState = !isCustomFieldGeneratorLinkedForAll(state, customField);
-      setCustomFieldGeneratorLinkForAll(state, customField, character.id, nextLinkedState);
+      const nextLinkedState = !isCustomFieldGeneratorLinkedForAll(
+        state,
+        customField,
+      );
+      setCustomFieldGeneratorLinkForAll(
+        state,
+        customField,
+        character.id,
+        nextLinkedState,
+      );
       return saveAndRender();
     }
   }
 
   if (resolvedAction === "toggle-lock" && layerId) {
-    const layer = findLayer(character.clothingGroups.flatMap((g) => g.layers), layerId);
+    const layer = findLayer(
+      character.clothingGroups.flatMap((g) => g.layers),
+      layerId,
+    );
     if (layer) {
       layer.locked = !layer.locked;
       return saveAndRender();
@@ -3884,7 +4456,8 @@ function handleLayerDrop(event) {
   }
 
   const nativeEvent = event.originalEvent || event;
-  const draggedId = nativeEvent.dataTransfer?.getData("text/plain") || draggedLayerId;
+  const draggedId =
+    nativeEvent.dataTransfer?.getData("text/plain") || draggedLayerId;
   const targetId = layerElement.dataset.layerId;
   const dropMode = layerElement.dataset.dropMode || "child";
 
@@ -3897,14 +4470,24 @@ function handleLayerDrop(event) {
     return;
   }
 
-  const draggedInfo = findLayerWithParentInGroups(character.clothingGroups, draggedId);
-  const targetInfo = findLayerWithParentInGroups(character.clothingGroups, targetId);
+  const draggedInfo = findLayerWithParentInGroups(
+    character.clothingGroups,
+    draggedId,
+  );
+  const targetInfo = findLayerWithParentInGroups(
+    character.clothingGroups,
+    targetId,
+  );
   if (!draggedInfo || !targetInfo) {
     return;
   }
 
-  const draggedIndex = draggedInfo.parentArray.findIndex((item) => item.id === draggedId);
-  const targetIndex = targetInfo.parentArray.findIndex((item) => item.id === targetId);
+  const draggedIndex = draggedInfo.parentArray.findIndex(
+    (item) => item.id === draggedId,
+  );
+  const targetIndex = targetInfo.parentArray.findIndex(
+    (item) => item.id === targetId,
+  );
   const sameParent = draggedInfo.parentArray === targetInfo.parentArray;
   if (sameParent && dropMode === "before" && draggedIndex === targetIndex - 1) {
     return;
@@ -3923,7 +4506,10 @@ function handleLayerDrop(event) {
 
     targetParent.splice(targetIndex, 1);
 
-    const extracted = extractLayerFromGroups(character.clothingGroups, draggedId);
+    const extracted = extractLayerFromGroups(
+      character.clothingGroups,
+      draggedId,
+    );
     if (!extracted) {
       return;
     }
@@ -3932,7 +4518,10 @@ function handleLayerDrop(event) {
     targetInfo.layer.children = targetInfo.layer.children || [];
     targetInfo.layer.children.push(extracted.layer);
   } else {
-    const extracted = extractLayerFromGroups(character.clothingGroups, draggedId);
+    const extracted = extractLayerFromGroups(
+      character.clothingGroups,
+      draggedId,
+    );
     if (!extracted) {
       return;
     }
@@ -3942,13 +4531,18 @@ function handleLayerDrop(event) {
       targetInfo.layer.children.push(extracted.layer);
     } else {
       const targetParent = targetInfo.parentArray;
-      const targetIndex = targetParent.findIndex((item) => item.id === targetId);
+      const targetIndex = targetParent.findIndex(
+        (item) => item.id === targetId,
+      );
       if (targetIndex === -1) {
         return;
       }
 
       let insertIndex = dropMode === "after" ? targetIndex + 1 : targetIndex;
-      if (extracted.parentArray === targetParent && extracted.index < targetIndex) {
+      if (
+        extracted.parentArray === targetParent &&
+        extracted.index < targetIndex
+      ) {
         insertIndex -= 1;
       }
 
@@ -3991,7 +4585,8 @@ function handleGroupDrop(event) {
 
   const groupId = groupElement.dataset.groupId;
   const nativeEvent = event.originalEvent || event;
-  const draggedId = nativeEvent.dataTransfer?.getData("text/plain") || draggedLayerId;
+  const draggedId =
+    nativeEvent.dataTransfer?.getData("text/plain") || draggedLayerId;
   if (!draggedId || !groupId) {
     return;
   }
@@ -4019,29 +4614,43 @@ function bindEvents() {
   footerGenerateButton.on("click", runDescriptionsGeneration);
   footerPreviewToggle.on("click", () => {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
-    extension_settings[extensionName].preview_image_prompts = !shouldPreviewImagePrompts();
+    extension_settings[extensionName].preview_image_prompts =
+      !shouldPreviewImagePrompts();
     renderPreviewToggleState();
     saveSettingsDebounced();
   });
   footerGuideToggle.on("click", () => {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
-    extension_settings[extensionName].add_prompt_guide = !shouldAddPromptGuide();
+    extension_settings[extensionName].add_prompt_guide =
+      !shouldAddPromptGuide();
     renderGuideToggleState();
     saveSettingsDebounced();
   });
   footerQuickResolutionButton.on("click", toggleQuickResolutionMenu);
   footerRoot.on("click", "[data-action='set-quick-resolution']", (event) => {
-    const resolutionId = String($(event.currentTarget).data("resolutionId") || DEFAULT_RESOLUTION_OPTION);
+    const resolutionId = String(
+      $(event.currentTarget).data("resolutionId") || DEFAULT_RESOLUTION_OPTION,
+    );
     setActiveQuickResolution(resolutionId);
     quickResolutionMenuOpen = false;
     renderQuickResolutionState();
   });
   footerFreeGenerateButton.on("click", generateFreeImage);
-  footerPortraitButton.on("click", (event) => generateCharacterImage("portrait", $(event.currentTarget)));
-  footerFullBodyButton.on("click", (event) => generateCharacterImage("fullbody", $(event.currentTarget)));
-  footerBackgroundButton.on("click", (event) => generateCharacterImage("background", $(event.currentTarget)));
-  footerViewerEyesButton.on("click", (event) => generateCharacterImage("viewer-eyes", $(event.currentTarget)));
-  footerSceneButton.on("click", (event) => generateCharacterImage("scene", $(event.currentTarget)));
+  footerPortraitButton.on("click", (event) =>
+    generateCharacterImage("portrait", $(event.currentTarget)),
+  );
+  footerFullBodyButton.on("click", (event) =>
+    generateCharacterImage("fullbody", $(event.currentTarget)),
+  );
+  footerBackgroundButton.on("click", (event) =>
+    generateCharacterImage("background", $(event.currentTarget)),
+  );
+  footerViewerEyesButton.on("click", (event) =>
+    generateCharacterImage("viewer-eyes", $(event.currentTarget)),
+  );
+  footerSceneButton.on("click", (event) =>
+    generateCharacterImage("scene", $(event.currentTarget)),
+  );
   panelRoot.on("input", handlePanelInput);
   panelRoot.on("click", handlePanelClick);
   floatingRoot.on("click", handlePanelClick);
@@ -4067,18 +4676,24 @@ function bindEvents() {
 }
 
 function bindDocumentEvents() {
-  $(document).off("click.stExtensionQuickResolution").on("click.stExtensionQuickResolution", (event) => {
-    if (!quickResolutionMenuOpen) {
-      return;
-    }
+  $(document)
+    .off("click.stExtensionQuickResolution")
+    .on("click.stExtensionQuickResolution", (event) => {
+      if (!quickResolutionMenuOpen) {
+        return;
+      }
 
-    if (event.target?.closest?.(".character-details-footer__quick-resolution-wrap")) {
-      return;
-    }
+      if (
+        event.target?.closest?.(
+          ".character-details-footer__quick-resolution-wrap",
+        )
+      ) {
+        return;
+      }
 
-    quickResolutionMenuOpen = false;
-    renderQuickResolutionMenu();
-  });
+      quickResolutionMenuOpen = false;
+      renderQuickResolutionMenu();
+    });
   $(document)
     .off(IMAGE_SETTINGS_CHANGED_EVENT)
     .on(IMAGE_SETTINGS_CHANGED_EVENT, () => {
@@ -4132,7 +4747,7 @@ function initCharacterDetailsPanel() {
     renderQuickResolutionState();
     updateFooterImageButtonsVisibility();
     renderPanel();
-    
+
     // Reset processed messages to re-inject buttons after chat change
     resetMessageProcessing();
   };
@@ -4142,7 +4757,10 @@ function initCharacterDetailsPanel() {
     state = loadCharacterDetails(nextContext);
     if (autoAddCharacterFromPersonaIfExists(state, nextContext)) {
       saveAndRender();
-      toastr.success("Persona character auto-added for new chat.", "Character Details");
+      toastr.success(
+        "Persona character auto-added for new chat.",
+        "Character Details",
+      );
       return;
     }
     reloadState();
@@ -4151,7 +4769,7 @@ function initCharacterDetailsPanel() {
   bindEvents();
   bindDocumentEvents();
   initializeMobileDrawer();
-  
+
   // Initialize message action buttons (set avatar, set background from chat)
   setActionButtonsDependencies({
     getContext,
@@ -4164,7 +4782,7 @@ function initCharacterDetailsPanel() {
     renderManagerPanel,
   });
   initMessageActionButtons(500);
-  
+
   reloadState();
 
   if (!customFieldRefreshTimer) {
@@ -4179,10 +4797,16 @@ function initCharacterDetailsPanel() {
     context.eventSource.on(context.eventTypes.CHAT_LOADED, reloadState);
     context.eventSource.on(context.eventTypes.SETTINGS_UPDATED, reloadState);
     if (context.eventTypes.CHAT_CREATED) {
-      context.eventSource.on(context.eventTypes.CHAT_CREATED, handleNewChatAutoAdd);
+      context.eventSource.on(
+        context.eventTypes.CHAT_CREATED,
+        handleNewChatAutoAdd,
+      );
     }
     if (context.eventTypes.GROUP_CHAT_CREATED) {
-      context.eventSource.on(context.eventTypes.GROUP_CHAT_CREATED, handleNewChatAutoAdd);
+      context.eventSource.on(
+        context.eventTypes.GROUP_CHAT_CREATED,
+        handleNewChatAutoAdd,
+      );
     }
   }
 }
@@ -4190,11 +4814,16 @@ function initCharacterDetailsPanel() {
 function setCharacterDetailsData(data) {
   const context = getContext();
   const previousViewerId = state?.viewerCharacterId || null;
-  const previousViewerName = state?.characters?.find((item) => item.id === previousViewerId)?.name;
+  const previousViewerName = state?.characters?.find(
+    (item) => item.id === previousViewerId,
+  )?.name;
   const previousMainId = state?.mainCharacterId || null;
   state = data;
   if (previousViewerName) {
-    const match = state.characters.find((character) => normalizeName(character.name) === normalizeName(previousViewerName));
+    const match = state.characters.find(
+      (character) =>
+        normalizeName(character.name) === normalizeName(previousViewerName),
+    );
     state.viewerCharacterId = match?.id || null;
   }
   // Preserve mainCharacterId
@@ -4216,4 +4845,8 @@ function getCharacterDetailsState() {
   return state;
 }
 
-export { initCharacterDetailsPanel, setCharacterDetailsData, getCharacterDetailsState };
+export {
+  initCharacterDetailsPanel,
+  setCharacterDetailsData,
+  getCharacterDetailsState,
+};

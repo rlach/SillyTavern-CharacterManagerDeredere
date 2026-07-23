@@ -17,6 +17,7 @@ import {
 import { showModItemEditorPopup as showModItemEditorPopupModal } from "./character-details-mod-modal.js";
 import {
   MOD_POSITION_AFTER_CHAR,
+  MOD_POSITION_AI_TECHNIQUES,
   MOD_POSITION_MIDDLE,
   MOD_ENTRY_TYPE_SINGLE,
   MOD_ENTRY_TYPE_GROUP,
@@ -117,7 +118,9 @@ function patchUiState(patch = {}) {
   }
 
   if (Object.hasOwn(patch, "modsPanelPositionFilter")) {
-    modsPanelPositionFilter = normalizeModsPanelPositionFilter(patch.modsPanelPositionFilter);
+    modsPanelPositionFilter = normalizeModsPanelPositionFilter(
+      patch.modsPanelPositionFilter,
+    );
   }
 }
 
@@ -129,7 +132,9 @@ function getDefaultAfterCharName() {
     return "";
   }
 
-  const characters = Array.isArray(currentState?.characters) ? currentState.characters : [];
+  const characters = Array.isArray(currentState?.characters)
+    ? currentState.characters
+    : [];
   const active = characters.find((c) => c.id === activeCharId);
   return String(active?.name || "").trim();
 }
@@ -143,7 +148,10 @@ function getDefaultModPositionForCreate() {
   return normalizeModPosition(filterValue);
 }
 
-function resolveCharacterModAssignment(shouldBindToCharacter, existingCharacterId = "") {
+function resolveCharacterModAssignment(
+  shouldBindToCharacter,
+  existingCharacterId = "",
+) {
   if (!shouldBindToCharacter) {
     return "";
   }
@@ -158,13 +166,19 @@ function resolveCharacterModAssignment(shouldBindToCharacter, existingCharacterI
     return fallbackCharacterId;
   }
 
-  toastr.warning("Character mod could not be assigned because there is no active character-card chat.", "Character Details");
+  toastr.warning(
+    "Character mod could not be assigned because there is no active character-card chat.",
+    "Character Details",
+  );
   return "";
 }
 
 function setLocalModEnabledState(modId, enabled) {
   const context = getContext();
-  const localState = cleanupModsLocalState(context, getNormalizedModsSettings());
+  const localState = cleanupModsLocalState(
+    context,
+    getNormalizedModsSettings(),
+  );
   const normalizedModId = String(modId || "").trim();
   if (!normalizedModId) {
     return;
@@ -176,11 +190,18 @@ function setLocalModEnabledState(modId, enabled) {
 
 function setLocalGroupSelectedItems(modId, itemIds) {
   const context = getContext();
-  const localState = cleanupModsLocalState(context, getNormalizedModsSettings());
+  const localState = cleanupModsLocalState(
+    context,
+    getNormalizedModsSettings(),
+  );
   const normalizedModId = String(modId || "").trim();
-  const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [itemIds])
-    .map((itemId) => String(itemId || "").trim())
-    .filter(Boolean))];
+  const normalizedItemIds = [
+    ...new Set(
+      (Array.isArray(itemIds) ? itemIds : [itemIds])
+        .map((itemId) => String(itemId || "").trim())
+        .filter(Boolean),
+    ),
+  ];
   if (!normalizedModId) {
     return;
   }
@@ -207,67 +228,67 @@ async function showModItemEditorPopup({
   allowDelete = false,
   allowConvertToGroup = false,
 } = {}) {
-  return showModItemEditorPopupModal({
-    title,
-    okButton,
-    shortnameValue,
-    detailsValue,
-    initialPosition,
-    initialAfterCharName,
-    includeGroupName,
-    initialGroupName,
-    includeModSettings,
-    initialCharacterMod,
-    initialLocalState,
-    initialMultiselect,
-    initialImageTypes,
-    allowDelete,
-    allowConvertToGroup,
-  }, {
-    Popup,
-    POPUP_TYPE,
-    escapeHtml,
-    normalizeRequiredModShortname,
-    normalizeModPosition,
-    MOD_POSITION_DEFINITIONS,
-    MOD_IMAGE_TYPE_DEFINITIONS,
-    normalizeModImageTypes,
-    toastr,
-  });
+  return showModItemEditorPopupModal(
+    {
+      title,
+      okButton,
+      shortnameValue,
+      detailsValue,
+      initialPosition,
+      initialAfterCharName,
+      includeGroupName,
+      initialGroupName,
+      includeModSettings,
+      initialCharacterMod,
+      initialLocalState,
+      initialMultiselect,
+      initialImageTypes,
+      allowDelete,
+      allowConvertToGroup,
+    },
+    {
+      Popup,
+      POPUP_TYPE,
+      escapeHtml,
+      normalizeRequiredModShortname,
+      normalizeModPosition,
+      MOD_POSITION_DEFINITIONS,
+      MOD_IMAGE_TYPE_DEFINITIONS,
+      normalizeModImageTypes,
+      toastr,
+    },
+  );
 }
 
 async function showConvertModToGroupPopup(initialGroupName) {
-  const popup = new Popup(
-    "<h3>Convert to group</h3>",
-    POPUP_TYPE.TEXT,
-    "",
-    {
-      okButton: "Convert",
-      cancelButton: "Cancel",
-      leftAlign: true,
-      customInputs: [
-        {
-          id: "st_extension_convert_group_name",
-          label: "Group name",
-          type: "text",
-          defaultState: initialGroupName,
-        },
-        {
-          id: "st_extension_convert_group_multiselect",
-          label: "Is multiselect",
-          type: "checkbox",
-          defaultState: false,
-        },
-      ],
-    },
-  );
+  const popup = new Popup("<h3>Convert to group</h3>", POPUP_TYPE.TEXT, "", {
+    okButton: "Convert",
+    cancelButton: "Cancel",
+    leftAlign: true,
+    customInputs: [
+      {
+        id: "st_extension_convert_group_name",
+        label: "Group name",
+        type: "text",
+        defaultState: initialGroupName,
+      },
+      {
+        id: "st_extension_convert_group_multiselect",
+        label: "Is multiselect",
+        type: "checkbox",
+        defaultState: false,
+      },
+    ],
+  });
 
   await popup.show();
   if (popup.result !== 1) {
     return null;
   }
 
-  const groupName = normalizeRequiredModShortname(popup.inputResults?.get("st_extension_convert_group_name"));
+  const groupName = normalizeRequiredModShortname(
+    popup.inputResults?.get("st_extension_convert_group_name"),
+  );
   if (!groupName) {
     toastr?.warning?.("Group name is required.", "Character Details");
     return null;
@@ -275,7 +296,9 @@ async function showConvertModToGroupPopup(initialGroupName) {
 
   return {
     groupName,
-    isMultiselect: Boolean(popup.inputResults?.get("st_extension_convert_group_multiselect")),
+    isMultiselect: Boolean(
+      popup.inputResults?.get("st_extension_convert_group_multiselect"),
+    ),
   };
 }
 
@@ -299,23 +322,38 @@ function getActiveModsCountForCurrentChat() {
 }
 
 function renderLeftDrawerState() {
-  if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
+  if (
+    !modsPanelContainerRoot?.length ||
+    !mobileDrawerLeftToggleButton?.length
+  ) {
     return;
   }
 
   const mobileMode = isMobileDrawerMode();
-  modsPanelContainerRoot.toggleClass("is-mobile-collapsed", mobileMode && !mobileDrawerLeftOpen);
-  modsPanelContainerRoot.toggleClass("is-desktop-collapsed", !mobileMode && !mobileDrawerLeftOpen);
+  modsPanelContainerRoot.toggleClass(
+    "is-mobile-collapsed",
+    mobileMode && !mobileDrawerLeftOpen,
+  );
+  modsPanelContainerRoot.toggleClass(
+    "is-desktop-collapsed",
+    !mobileMode && !mobileDrawerLeftOpen,
+  );
 
   mobileDrawerLeftToggleButton.toggleClass("is-open", mobileDrawerLeftOpen);
   const activeModsCount = getActiveModsCountForCurrentChat();
   const showActiveGlow = !mobileDrawerLeftOpen && activeModsCount > 0;
   mobileDrawerLeftToggleButton.toggleClass("has-active-mods", showActiveGlow);
 
-  let badge = mobileDrawerLeftToggleButton.find(".st-extension-mobile-drawer-left-toggle__count");
+  let badge = mobileDrawerLeftToggleButton.find(
+    ".st-extension-mobile-drawer-left-toggle__count",
+  );
   if (!badge.length) {
-    mobileDrawerLeftToggleButton.append('<span class="st-extension-mobile-drawer-left-toggle__count displayNone"></span>');
-    badge = mobileDrawerLeftToggleButton.find(".st-extension-mobile-drawer-left-toggle__count");
+    mobileDrawerLeftToggleButton.append(
+      '<span class="st-extension-mobile-drawer-left-toggle__count displayNone"></span>',
+    );
+    badge = mobileDrawerLeftToggleButton.find(
+      ".st-extension-mobile-drawer-left-toggle__count",
+    );
   }
 
   badge.text(String(activeModsCount));
@@ -324,18 +362,29 @@ function renderLeftDrawerState() {
   const icon = mobileDrawerLeftToggleButton.find("i");
   icon
     .removeClass("fa-angle-left fa-angle-right fa-gear fa-gears")
-    .addClass(mobileDrawerLeftOpen ? "fa-angle-left" : (activeModsCount > 0 ? "fa-gears" : "fa-gear"));
+    .addClass(
+      mobileDrawerLeftOpen
+        ? "fa-angle-left"
+        : activeModsCount > 0
+          ? "fa-gears"
+          : "fa-gear",
+    );
 
   mobileDrawerLeftToggleButton.attr(
     "title",
     mobileDrawerLeftOpen
       ? "Close mods panel"
-      : (activeModsCount > 0 ? `${activeModsCount} mod(s) active – open mods panel` : "Open mods panel"),
+      : activeModsCount > 0
+        ? `${activeModsCount} mod(s) active – open mods panel`
+        : "Open mods panel",
   );
 }
 
 function initializeLeftMobileDrawer() {
-  if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
+  if (
+    !modsPanelContainerRoot?.length ||
+    !mobileDrawerLeftToggleButton?.length
+  ) {
     return;
   }
 
@@ -384,7 +433,9 @@ function bindModsPanelEvents() {
 function saveModsSettings(nextMods, options = {}) {
   const rerender = options.rerender !== false;
   extension_settings[extensionName] = extension_settings[extensionName] || {};
-  const normalizedMods = (Array.isArray(nextMods) ? nextMods : []).map((mod) => normalizeModEntry(mod));
+  const normalizedMods = (Array.isArray(nextMods) ? nextMods : []).map((mod) =>
+    normalizeModEntry(mod),
+  );
   extension_settings[extensionName].mods = normalizedMods;
   cleanupModsLocalState(getContext(), normalizedMods);
   saveSettingsDebounced();
@@ -396,7 +447,10 @@ function saveModsSettings(nextMods, options = {}) {
 }
 
 export function renderModsPanelVisibility() {
-  if (!modsPanelContainerRoot?.length || !mobileDrawerLeftToggleButton?.length) {
+  if (
+    !modsPanelContainerRoot?.length ||
+    !mobileDrawerLeftToggleButton?.length
+  ) {
     return;
   }
 
@@ -424,35 +478,51 @@ export function renderModsPositionFilterState() {
   }
 
   const uiState = getUiState();
-  const filterValue = normalizeModsPanelPositionFilter(uiState.modsPanelPositionFilter);
-  modsPositionFilterRoot
-    .find("[data-mods-filter]")
-    .each((_, element) => {
-      const button = $(element);
-      const buttonFilter = normalizeModsPanelPositionFilter(button.data("modsFilter"));
-      const active = buttonFilter === filterValue;
-      button.toggleClass("is-active", active);
-      button.attr("aria-pressed", active ? "true" : "false");
-    });
-  const selectedDefinition = filterValue === MODS_PANEL_FILTER_ALL
-    ? { label: "All", icon: "fa-list" }
-    : getModPositionDefinition(filterValue);
-  modsPositionFilterRoot.find(".mods-position-filter__label").html(
-    `<i class="fa-solid ${selectedDefinition.icon}"></i><span>${escapeHtml(selectedDefinition.label)}</span>`,
+  const filterValue = normalizeModsPanelPositionFilter(
+    uiState.modsPanelPositionFilter,
   );
+  modsPositionFilterRoot.find("[data-mods-filter]").each((_, element) => {
+    const button = $(element);
+    const buttonFilter = normalizeModsPanelPositionFilter(
+      button.data("modsFilter"),
+    );
+    const active = buttonFilter === filterValue;
+    button.toggleClass("is-active", active);
+    button.attr("aria-pressed", active ? "true" : "false");
+  });
+  const selectedDefinition =
+    filterValue === MODS_PANEL_FILTER_ALL
+      ? { label: "Manual", icon: "fa-list" }
+      : getModPositionDefinition(filterValue);
+  modsPositionFilterRoot
+    .find(".mods-position-filter__label")
+    .html(
+      `<i class="fa-solid ${selectedDefinition.icon}"></i><span>${escapeHtml(selectedDefinition.label)}</span>`,
+    );
 }
 
 function modMatchesSearch(mod, query) {
-  const needle = String(query || "").trim().toLocaleLowerCase();
+  const needle = String(query || "")
+    .trim()
+    .toLocaleLowerCase();
   if (!needle) {
     return true;
   }
 
-  const searchableValues = [mod.shortname, mod.groupName, mod.fullContent, mod.afterCharName];
+  const searchableValues = [
+    mod.shortname,
+    mod.groupName,
+    mod.fullContent,
+    mod.afterCharName,
+  ];
   for (const item of Array.isArray(mod.items) ? mod.items : []) {
     searchableValues.push(item?.shortname, item?.fullContent);
   }
-  return searchableValues.some((value) => String(value || "").toLocaleLowerCase().includes(needle));
+  return searchableValues.some((value) =>
+    String(value || "")
+      .toLocaleLowerCase()
+      .includes(needle),
+  );
 }
 
 function renderModsSearchState() {
@@ -470,15 +540,15 @@ export function handleModsSearchInput(event) {
 }
 
 export function getEnabledModImageTypeCount(mod) {
-  return MOD_IMAGE_TYPE_DEFINITIONS
-    .filter((definition) => mod?.imageTypes?.[definition.key] !== false)
-    .length;
+  return MOD_IMAGE_TYPE_DEFINITIONS.filter(
+    (definition) => mod?.imageTypes?.[definition.key] !== false,
+  ).length;
 }
 
 export function getModImageTypesButtonTitle(mod) {
-  const enabledLabels = MOD_IMAGE_TYPE_DEFINITIONS
-    .filter((definition) => mod?.imageTypes?.[definition.key] !== false)
-    .map((definition) => definition.label);
+  const enabledLabels = MOD_IMAGE_TYPE_DEFINITIONS.filter(
+    (definition) => mod?.imageTypes?.[definition.key] !== false,
+  ).map((definition) => definition.label);
 
   if (enabledLabels.length === MOD_IMAGE_TYPE_DEFINITIONS.length) {
     return "Active for all image types";
@@ -496,7 +566,9 @@ function getGroupSelectionLabel(mod) {
   if (!selectedItems.length) {
     return mod.isMultiselect ? "No mods selected" : "Unnamed";
   }
-  return selectedItems.map((item) => String(item.shortname || "Unnamed").trim() || "Unnamed").join(", ");
+  return selectedItems
+    .map((item) => String(item.shortname || "Unnamed").trim() || "Unnamed")
+    .join(", ");
 }
 
 function readCharacterAvatarMap(context) {
@@ -527,7 +599,14 @@ function getModCharacterAvatarSource(character, context, avatarMap) {
   return String(character?.avatar_url || "").trim();
 }
 
-function renderModPositionHandle(mod, position, positionDefinition, state, context, avatarMap) {
+function renderModPositionHandle(
+  mod,
+  position,
+  positionDefinition,
+  state,
+  context,
+  avatarMap,
+) {
   if (position !== MOD_POSITION_AFTER_CHAR) {
     return `<span class="mod-item__drag-handle" draggable="true" title="${escapeHtml(positionDefinition.label)} — drag to reorder"><i class="fa-solid ${positionDefinition.icon}"></i></span>`;
   }
@@ -555,7 +634,9 @@ function renderCompactModItem(mod, state, uiState, context, avatarMap) {
   const groupPopupOpen = uiState.openModGroupForId === mod.id;
   const selectedItems = getSelectedModItems(mod) || [];
   const selectedItemIds = new Set(selectedItems.map((item) => item.id));
-  const groupOptions = (Array.isArray(mod.items) ? mod.items : []).map((item) => `
+  const groupOptions = (Array.isArray(mod.items) ? mod.items : [])
+    .map(
+      (item) => `
     <button
       type="button"
       class="mod-item__group-option ${selectedItemIds.has(item.id) ? "is-active" : ""}"
@@ -567,24 +648,39 @@ function renderCompactModItem(mod, state, uiState, context, avatarMap) {
       ${groupEntry && mod.isMultiselect ? `<i class="fa-solid ${selectedItemIds.has(item.id) ? "fa-square-check" : "fa-square"}"></i>` : ""}
       ${escapeHtml(item.shortname)}
     </button>
-  `).join("");
-  const groupSelector = groupEntry ? `
+  `,
+    )
+    .join("");
+  const groupSelector = groupEntry
+    ? `
     <div class="mod-item__group-wrap">
       <button type="button" class="menu_button mod-item__group-trigger" data-action="toggle-mod-group-menu" data-mod-id="${escapeHtml(mod.id)}" title="Select group mods">
         <span class="mod-item__group-trigger-label">${escapeHtml(getGroupSelectionLabel(mod))}</span>
         <i class="fa-solid fa-chevron-down"></i>
       </button>
       <div class="mod-item__group-popup ${groupPopupOpen ? "is-open" : ""} ${groupPopupOpen && uiState.openModGroupOpensUpward ? "opens-upward" : ""}">${groupOptions}</div>
-    </div>` : "";
+    </div>`
+    : "";
   const rowClass = [
     "mod-item",
     groupEntry ? "mod-item--group" : "",
     mod.characterId ? "mod-item--character" : "",
     isModActiveForCurrentChat(mod) ? "mod-item--active" : "",
     stickyModActionsForId === mod.id ? "mod-item--actions-visible" : "",
-  ].filter(Boolean).join(" ");
-  const name = groupEntry ? String(mod.groupName || "Group").trim() || "Group" : String(mod.shortname || "Unnamed").trim() || "Unnamed";
-  const positionHandle = renderModPositionHandle(mod, position, positionDefinition, state, context, avatarMap);
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const name = groupEntry
+    ? String(mod.groupName || "Group").trim() || "Group"
+    : String(mod.shortname || "Unnamed").trim() || "Unnamed";
+  const positionHandle = renderModPositionHandle(
+    mod,
+    position,
+    positionDefinition,
+    state,
+    context,
+    avatarMap,
+  );
   return `
     <div class="${rowClass}" data-mod-id="${escapeHtml(mod.id)}">
       ${positionHandle}
@@ -603,9 +699,12 @@ function positionOpenGroupPopupForMobile(modId) {
     return;
   }
 
-  const popup = modsPanelRoot.find(`.mod-item__group-popup`).filter((_, element) => (
-    element.closest(".mod-item")?.dataset?.modId === modId
-  )).get(0);
+  const popup = modsPanelRoot
+    .find(`.mod-item__group-popup`)
+    .filter(
+      (_, element) => element.closest(".mod-item")?.dataset?.modId === modId,
+    )
+    .get(0);
   const groupWrap = popup?.closest(".mod-item__group-wrap");
   const panel = modsPanelRoot.get(0);
   if (!popup || !groupWrap || !panel) {
@@ -617,7 +716,10 @@ function positionOpenGroupPopupForMobile(modId) {
   const popupWidth = popup.getBoundingClientRect().width;
   const leftEdge = panelRect.left + 4;
   const rightEdge = panelRect.right - 4;
-  const popupLeft = Math.max(leftEdge, Math.min(groupRect.right - popupWidth, rightEdge - popupWidth));
+  const popupLeft = Math.max(
+    leftEdge,
+    Math.min(groupRect.right - popupWidth, rightEdge - popupWidth),
+  );
   popup.style.left = `${Math.round(popupLeft - groupRect.left)}px`;
   popup.style.right = "auto";
 }
@@ -637,29 +739,43 @@ export function renderModsPanel() {
   const context = getContext();
   const mods = getVisibleModsForCurrentChat(getModsSettings(context), context);
   if (!mods.length) {
-    modsPanelRoot.html('<div class="character-mods-panel__empty">No mods yet. Use + to add one.</div>');
+    modsPanelRoot.html(
+      '<div class="character-mods-panel__empty">No mods yet. Use + to add one.</div>',
+    );
     return;
   }
 
-  const filterValue = normalizeModsPanelPositionFilter(uiState.modsPanelPositionFilter);
-  const visibleMods = mods.filter((mod) => {
-    if (filterValue === MODS_PANEL_FILTER_ALL) {
-      return true;
-    }
+  const filterValue = normalizeModsPanelPositionFilter(
+    uiState.modsPanelPositionFilter,
+  );
+  const visibleMods = mods
+    .filter((mod) => {
+      if (filterValue === MODS_PANEL_FILTER_ALL) {
+        return (
+          normalizeModPosition(mod.position) !== MOD_POSITION_AI_TECHNIQUES
+        );
+      }
 
-    return normalizeModPosition(mod.position) === filterValue;
-  }).filter((mod) => modMatchesSearch(mod, modsSearchQuery));
+      return normalizeModPosition(mod.position) === filterValue;
+    })
+    .filter((mod) => modMatchesSearch(mod, modsSearchQuery));
 
   patchUiState({
-    openModImageTypesForId: uiState.openModImageTypesForId && !visibleMods.some((mod) => mod.id === uiState.openModImageTypesForId)
-      ? null
-      : uiState.openModImageTypesForId,
-    openModPositionForId: uiState.openModPositionForId && !visibleMods.some((mod) => mod.id === uiState.openModPositionForId)
-      ? null
-      : uiState.openModPositionForId,
-    openModGroupForId: uiState.openModGroupForId && !visibleMods.some((mod) => mod.id === uiState.openModGroupForId)
-      ? null
-      : uiState.openModGroupForId,
+    openModImageTypesForId:
+      uiState.openModImageTypesForId &&
+      !visibleMods.some((mod) => mod.id === uiState.openModImageTypesForId)
+        ? null
+        : uiState.openModImageTypesForId,
+    openModPositionForId:
+      uiState.openModPositionForId &&
+      !visibleMods.some((mod) => mod.id === uiState.openModPositionForId)
+        ? null
+        : uiState.openModPositionForId,
+    openModGroupForId:
+      uiState.openModGroupForId &&
+      !visibleMods.some((mod) => mod.id === uiState.openModGroupForId)
+        ? null
+        : uiState.openModGroupForId,
   });
 
   const nextUiState = getUiState();
@@ -668,7 +784,9 @@ export function renderModsPanel() {
     const message = modsSearchQuery
       ? `No mods matching "${escapeHtml(modsSearchQuery)}" in ${escapeHtml(getModsPanelFilterLabel(filterValue))}.`
       : `No mods in ${escapeHtml(getModsPanelFilterLabel(filterValue))}.`;
-    modsPanelRoot.html(`<div class="character-mods-panel__empty">${message}</div>`);
+    modsPanelRoot.html(
+      `<div class="character-mods-panel__empty">${message}</div>`,
+    );
     return;
   }
 
@@ -676,29 +794,33 @@ export function renderModsPanel() {
   const avatarMap = readCharacterAvatarMap(context);
   const useTallLayout = false;
 
-  const legacyHtml = visibleMods.map((mod) => {
-    const groupEntry = isModGroup(mod);
-    const selectedItem = getSelectedModItem(mod);
-    const displayedShortname = groupEntry
-      ? `${String(mod.groupName || "Group").trim()} - ${String(selectedItem?.shortname || "Unnamed").trim() || "Unnamed"}`
-      : String(mod.shortname || "").trim() || "Unnamed";
-    const enabledTypesCount = getEnabledModImageTypeCount(mod);
-    const allTypesEnabled = enabledTypesCount === MOD_IMAGE_TYPE_DEFINITIONS.length;
-    const typesPopupOpen = nextUiState.openModImageTypesForId === mod.id;
-    const groupPopupOpen = nextUiState.openModGroupForId === mod.id;
-    const position = normalizeModPosition(mod.position);
-    const positionDefinition = getModPositionDefinition(position);
-    const positionPopupOpen = nextUiState.openModPositionForId === mod.id;
-    const stateScopeLabel = mod.stateScope === MOD_STATE_SCOPE_LOCAL ? "local" : "global";
-    const afterCharName = normalizeModAfterCharName(mod.afterCharName);
-    const afterCharMatch = findCharacterByName(state, afterCharName);
-    const afterCharInvalid = position === MOD_POSITION_AFTER_CHAR
-      && !afterCharMatch
-      && !isSupportedAfterCharMacro(afterCharName);
+  const legacyHtml = visibleMods
+    .map((mod) => {
+      const groupEntry = isModGroup(mod);
+      const selectedItem = getSelectedModItem(mod);
+      const displayedShortname = groupEntry
+        ? `${String(mod.groupName || "Group").trim()} - ${String(selectedItem?.shortname || "Unnamed").trim() || "Unnamed"}`
+        : String(mod.shortname || "").trim() || "Unnamed";
+      const enabledTypesCount = getEnabledModImageTypeCount(mod);
+      const allTypesEnabled =
+        enabledTypesCount === MOD_IMAGE_TYPE_DEFINITIONS.length;
+      const typesPopupOpen = nextUiState.openModImageTypesForId === mod.id;
+      const groupPopupOpen = nextUiState.openModGroupForId === mod.id;
+      const position = normalizeModPosition(mod.position);
+      const positionDefinition = getModPositionDefinition(position);
+      const positionPopupOpen = nextUiState.openModPositionForId === mod.id;
+      const stateScopeLabel =
+        mod.stateScope === MOD_STATE_SCOPE_LOCAL ? "local" : "global";
+      const afterCharName = normalizeModAfterCharName(mod.afterCharName);
+      const afterCharMatch = findCharacterByName(state, afterCharName);
+      const afterCharInvalid =
+        position === MOD_POSITION_AFTER_CHAR &&
+        !afterCharMatch &&
+        !isSupportedAfterCharMacro(afterCharName);
 
-    const typeButtons = MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => {
-      const typeEnabled = mod.imageTypes?.[definition.key] !== false;
-      return `
+      const typeButtons = MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => {
+        const typeEnabled = mod.imageTypes?.[definition.key] !== false;
+        return `
         <button
           type="button"
           class="mod-item__image-type ${typeEnabled ? "" : "is-disabled"}"
@@ -710,11 +832,11 @@ export function renderModsPanel() {
           <i class="fa-solid ${definition.icon}"></i>
         </button>
       `;
-    }).join("");
+      }).join("");
 
-    const positionOptions = MOD_POSITION_DEFINITIONS.map((definition) => {
-      const selected = position === definition.key;
-      return `
+      const positionOptions = MOD_POSITION_DEFINITIONS.map((definition) => {
+        const selected = position === definition.key;
+        return `
         <button
           type="button"
           class="mod-item__position-option ${selected ? "is-active" : ""}"
@@ -727,11 +849,12 @@ export function renderModsPanel() {
           <span>${escapeHtml(definition.label)}</span>
         </button>
       `;
-    }).join("");
+      }).join("");
 
-    const groupOptions = (Array.isArray(mod.items) ? mod.items : []).map((item) => {
-      const selected = item.id === selectedItem?.id;
-      return `
+      const groupOptions = (Array.isArray(mod.items) ? mod.items : [])
+        .map((item) => {
+          const selected = item.id === selectedItem?.id;
+          return `
         <button
           type="button"
           class="mod-item__group-option ${selected ? "is-active" : ""}"
@@ -743,10 +866,11 @@ export function renderModsPanel() {
           ${escapeHtml(item.shortname)}
         </button>
       `;
-    }).join("");
+        })
+        .join("");
 
-    const shortnameControl = groupEntry
-      ? `
+      const shortnameControl = groupEntry
+        ? `
         <div class="mod-item__group-wrap">
           <button
             type="button"
@@ -763,15 +887,16 @@ export function renderModsPanel() {
           </div>
         </div>
       `
-      : `
+        : `
         <div
           class="mod-item__shortname"
           title="${escapeHtml(displayedShortname)}"
         >${escapeHtml(displayedShortname)}</div>
       `;
 
-    const primaryLabelControl = position === MOD_POSITION_AFTER_CHAR
-      ? `
+      const primaryLabelControl =
+        position === MOD_POSITION_AFTER_CHAR
+          ? `
         <div class="mod-item__name-pair">
           <input
             class="text_pole mod-item__charname-input ${afterCharInvalid ? "is-invalid" : ""}"
@@ -784,13 +909,21 @@ export function renderModsPanel() {
           ${shortnameControl}
         </div>
       `
-      : shortnameControl;
+          : shortnameControl;
 
-    const secondaryActionConfig = groupEntry
-      ? { action: "add-mod-to-group", title: "Add mod to group", icon: "fa-plus" }
-      : { action: "convert-mod-to-group", title: "Convert to group", icon: "fa-layer-group" };
+      const secondaryActionConfig = groupEntry
+        ? {
+            action: "add-mod-to-group",
+            title: "Add mod to group",
+            icon: "fa-plus",
+          }
+        : {
+            action: "convert-mod-to-group",
+            title: "Convert to group",
+            icon: "fa-layer-group",
+          };
 
-    const secondaryActionButton = `
+      const secondaryActionButton = `
       <button
         type="button"
         class="mod-item__action"
@@ -802,16 +935,19 @@ export function renderModsPanel() {
       </button>
     `;
 
-    const rowClass = [
-      "mod-item",
-      groupEntry ? "mod-item--group" : "",
-      mod.characterId ? "mod-item--character" : "",
-      position === MOD_POSITION_AFTER_CHAR ? "mod-item--after-char" : "",
-    ].filter(Boolean).join(" ");
+      const rowClass = [
+        "mod-item",
+        groupEntry ? "mod-item--group" : "",
+        mod.characterId ? "mod-item--character" : "",
+        position === MOD_POSITION_AFTER_CHAR ? "mod-item--after-char" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
 
-    if (useTallLayout) {
-      const afterCharInput = position === MOD_POSITION_AFTER_CHAR
-        ? `
+      if (useTallLayout) {
+        const afterCharInput =
+          position === MOD_POSITION_AFTER_CHAR
+            ? `
           <input
             class="text_pole mod-item__charname-input mod-item__charname-input--tall ${afterCharInvalid ? "is-invalid" : ""}"
             type="text"
@@ -821,9 +957,9 @@ export function renderModsPanel() {
             title="${afterCharInvalid ? "Character not found in this chat" : "Character name for after-char mod"}"
           />
         `
-        : '<div class="mod-item__charname-placeholder"></div>';
+            : '<div class="mod-item__charname-placeholder"></div>';
 
-      return `
+        return `
         <div class="${rowClass}" data-mod-id="${escapeHtml(mod.id)}">
           <div class="st-mod-item__tall-row-top">
             <span class="mod-item__drag-handle" draggable="true" title="Drag to reorder">
@@ -900,9 +1036,9 @@ export function renderModsPanel() {
           </div>
         </div>
       `;
-    }
+      }
 
-    return `
+      return `
       <div class="${rowClass}" data-mod-id="${escapeHtml(mod.id)}">
         <span class="mod-item__drag-handle" draggable="true" title="Drag to reorder">
           <i class="fa-solid fa-grip-vertical"></i>
@@ -966,17 +1102,24 @@ export function renderModsPanel() {
         </button>
       </div>
     `;
-  }).join("");
+    })
+    .join("");
 
   const html = legacyHtml
-    ? visibleMods.map((mod) => renderCompactModItem(mod, state, nextUiState, context, avatarMap)).join("")
+    ? visibleMods
+        .map((mod) =>
+          renderCompactModItem(mod, state, nextUiState, context, avatarMap),
+        )
+        .join("")
     : "";
   modsPanelRoot.html(html);
   renderLeftDrawerState();
 
   if (nextUiState.openModPositionForId) {
     const positionTrigger = modsPanelRoot
-      .find(`.mod-item__position-trigger[data-mod-id='${nextUiState.openModPositionForId}']`)
+      .find(
+        `.mod-item__position-trigger[data-mod-id='${nextUiState.openModPositionForId}']`,
+      )
       .get(0);
     patchUiState({
       openModPositionOpensUpward: shouldPopupOpenUpward(positionTrigger),
@@ -985,7 +1128,9 @@ export function renderModsPanel() {
 
   if (nextUiState.openModGroupForId) {
     const groupTrigger = modsPanelRoot
-      .find(`.mod-item__group-trigger[data-mod-id='${nextUiState.openModGroupForId}']`)
+      .find(
+        `.mod-item__group-trigger[data-mod-id='${nextUiState.openModGroupForId}']`,
+      )
       .get(0);
     patchUiState({
       openModGroupOpensUpward: shouldPopupOpenUpward(groupTrigger),
@@ -995,7 +1140,9 @@ export function renderModsPanel() {
 }
 
 export function handleModsPositionFilterClick(event) {
-  const filterToggle = event.target.closest("[data-action='toggle-mods-filter-menu']");
+  const filterToggle = event.target.closest(
+    "[data-action='toggle-mods-filter-menu']",
+  );
   if (filterToggle) {
     event.stopPropagation();
     const menu = modsPositionFilterRoot.find(".mods-position-filter__menu");
@@ -1012,10 +1159,16 @@ export function handleModsPositionFilterClick(event) {
   event.stopPropagation();
 
   const uiState = getUiState();
-  const nextFilter = normalizeModsPanelPositionFilter(actionOwner.dataset.modsFilter);
+  const nextFilter = normalizeModsPanelPositionFilter(
+    actionOwner.dataset.modsFilter,
+  );
   if (uiState.modsPanelPositionFilter === nextFilter) {
-    modsPositionFilterRoot.find(".mods-position-filter__menu").removeClass("is-open");
-    modsPositionFilterRoot.find(".mods-position-filter__trigger").attr("aria-expanded", "false");
+    modsPositionFilterRoot
+      .find(".mods-position-filter__menu")
+      .removeClass("is-open");
+    modsPositionFilterRoot
+      .find(".mods-position-filter__trigger")
+      .attr("aria-expanded", "false");
     return;
   }
 
@@ -1025,8 +1178,12 @@ export function handleModsPositionFilterClick(event) {
     openModPositionForId: null,
     openModGroupForId: null,
   });
-  modsPositionFilterRoot.find(".mods-position-filter__menu").removeClass("is-open");
-  modsPositionFilterRoot.find(".mods-position-filter__trigger").attr("aria-expanded", "false");
+  modsPositionFilterRoot
+    .find(".mods-position-filter__menu")
+    .removeClass("is-open");
+  modsPositionFilterRoot
+    .find(".mods-position-filter__trigger")
+    .attr("aria-expanded", "false");
   renderModsPositionFilterState();
   renderModsPanel();
 }
@@ -1041,7 +1198,8 @@ export function handleModImageTypesMenuToggle(actionOwner) {
   patchUiState({
     openModPositionForId: null,
     openModGroupForId: null,
-    openModImageTypesForId: uiState.openModImageTypesForId === modId ? null : modId,
+    openModImageTypesForId:
+      uiState.openModImageTypesForId === modId ? null : modId,
   });
   renderModsPanel();
 }
@@ -1058,7 +1216,9 @@ export function handleModPositionMenuToggle(actionOwner) {
     openModImageTypesForId: null,
     openModGroupForId: null,
     openModPositionForId: willOpen ? modId : null,
-    openModPositionOpensUpward: willOpen ? shouldPopupOpenUpward(actionOwner) : false,
+    openModPositionOpensUpward: willOpen
+      ? shouldPopupOpenUpward(actionOwner)
+      : false,
   });
   renderModsPanel();
 }
@@ -1075,7 +1235,9 @@ export function handleModGroupMenuToggle(actionOwner) {
     openModImageTypesForId: null,
     openModPositionForId: null,
     openModGroupForId: willOpen ? modId : null,
-    openModGroupOpensUpward: willOpen ? shouldPopupOpenUpward(actionOwner) : false,
+    openModGroupOpensUpward: willOpen
+      ? shouldPopupOpenUpward(actionOwner)
+      : false,
   });
   renderModsPanel();
 }
@@ -1099,11 +1261,16 @@ export async function handleAddMod() {
   }
 
   const mods = getNormalizedModsSettings();
-  const characterId = resolveCharacterModAssignment(edited.characterMod === true, "");
+  const characterId = resolveCharacterModAssignment(
+    edited.characterMod === true,
+    "",
+  );
   const position = normalizeModPosition(edited.position);
-  const afterCharName = position === MOD_POSITION_AFTER_CHAR
-    ? (normalizeModAfterCharName(edited.afterCharName) || getDefaultAfterCharName())
-    : "";
+  const afterCharName =
+    position === MOD_POSITION_AFTER_CHAR
+      ? normalizeModAfterCharName(edited.afterCharName) ||
+        getDefaultAfterCharName()
+      : "";
   mods.push({
     id: createModId(),
     type: MOD_ENTRY_TYPE_SINGLE,
@@ -1112,7 +1279,9 @@ export async function handleAddMod() {
     shortname: edited.shortname,
     fullContent: edited.fullContent,
     imageTypes: normalizeModImageTypes(edited.imageTypes),
-    stateScope: edited.localState ? MOD_STATE_SCOPE_LOCAL : MOD_STATE_SCOPE_GLOBAL,
+    stateScope: edited.localState
+      ? MOD_STATE_SCOPE_LOCAL
+      : MOD_STATE_SCOPE_GLOBAL,
     characterId,
     afterCharName,
   });
@@ -1132,7 +1301,8 @@ export function handleModEnabledToggle(actionOwner) {
   }
 
   const mod = mods[index];
-  const effectiveMod = getModsSettings().find((item) => item.id === modId) || mod;
+  const effectiveMod =
+    getModsSettings().find((item) => item.id === modId) || mod;
   const nextEnabled = !effectiveMod?.enabled;
   if (mod.stateScope === MOD_STATE_SCOPE_LOCAL) {
     setLocalModEnabledState(modId, nextEnabled);
@@ -1163,13 +1333,20 @@ export function handleModGroupItemSelect(actionOwner) {
   }
 
   const mod = mods[index];
-  const effectiveMod = getModsSettings().find((item) => item.id === modId) || mod;
-  const currentItemIds = mod.isMultiselect === true
-    ? (Array.isArray(effectiveMod.selectedItemIds) ? effectiveMod.selectedItemIds : [])
-    : [effectiveMod.selectedItemId];
-  const nextItemIds = mod.isMultiselect === true
-    ? (currentItemIds.includes(itemId) ? currentItemIds.filter((id) => id !== itemId) : [...currentItemIds, itemId])
-    : [itemId];
+  const effectiveMod =
+    getModsSettings().find((item) => item.id === modId) || mod;
+  const currentItemIds =
+    mod.isMultiselect === true
+      ? Array.isArray(effectiveMod.selectedItemIds)
+        ? effectiveMod.selectedItemIds
+        : []
+      : [effectiveMod.selectedItemId];
+  const nextItemIds =
+    mod.isMultiselect === true
+      ? currentItemIds.includes(itemId)
+        ? currentItemIds.filter((id) => id !== itemId)
+        : [...currentItemIds, itemId]
+      : [itemId];
 
   if (mod.stateScope === MOD_STATE_SCOPE_LOCAL) {
     setLocalGroupSelectedItems(modId, nextItemIds);
@@ -1195,7 +1372,11 @@ export function handleModImageTypeToggle(actionOwner) {
     return;
   }
 
-  if (!MOD_IMAGE_TYPE_DEFINITIONS.some((definition) => definition.key === imageType)) {
+  if (
+    !MOD_IMAGE_TYPE_DEFINITIONS.some(
+      (definition) => definition.key === imageType,
+    )
+  ) {
     return;
   }
 
@@ -1214,7 +1395,9 @@ export function handleModImageTypeToggle(actionOwner) {
 
 export function handleModPositionChange(actionOwner) {
   const modId = String(actionOwner?.dataset?.modId || "").trim();
-  const nextPosition = normalizeModPosition(actionOwner?.dataset?.position || actionOwner?.value);
+  const nextPosition = normalizeModPosition(
+    actionOwner?.dataset?.position || actionOwner?.value,
+  );
   if (!modId) {
     return;
   }
@@ -1226,7 +1409,10 @@ export function handleModPositionChange(actionOwner) {
   }
 
   mods[index].position = nextPosition;
-  if (nextPosition === MOD_POSITION_AFTER_CHAR && !normalizeModAfterCharName(mods[index].afterCharName)) {
+  if (
+    nextPosition === MOD_POSITION_AFTER_CHAR &&
+    !normalizeModAfterCharName(mods[index].afterCharName)
+  ) {
     mods[index].afterCharName = getDefaultAfterCharName();
   }
   patchUiState({ openModPositionForId: null });
@@ -1300,9 +1486,10 @@ export async function handleAddModToGroup(actionOwner) {
   mods[index].items = Array.isArray(mods[index].items) ? mods[index].items : [];
   mods[index].items.push(nextItem);
   mods[index].selectedItemId = nextItem.id;
-  mods[index].selectedItemIds = mods[index].isMultiselect === true
-    ? [...new Set([...(mods[index].selectedItemIds || []), nextItem.id])]
-    : [nextItem.id];
+  mods[index].selectedItemIds =
+    mods[index].isMultiselect === true
+      ? [...new Set([...(mods[index].selectedItemIds || []), nextItem.id])]
+      : [nextItem.id];
   patchUiState({ openModGroupForId: null });
   saveModsSettings(mods);
 }
@@ -1321,15 +1508,21 @@ export async function handleModEntryEdit(actionOwner) {
 
   const mod = mods[index];
   const previousStateScope = mod.stateScope;
-  const effectiveModBeforeEdit = getModsSettings().find((item) => item.id === modId) || mod;
+  const effectiveModBeforeEdit =
+    getModsSettings().find((item) => item.id === modId) || mod;
   const editingGroupItem = isModGroup(effectiveModBeforeEdit)
-    ? (getSelectedModItem(effectiveModBeforeEdit) || effectiveModBeforeEdit.items?.[0])
+    ? getSelectedModItem(effectiveModBeforeEdit) ||
+      effectiveModBeforeEdit.items?.[0]
     : null;
   const edited = await showModItemEditorPopup({
     title: isModGroup(mod) ? "Edit selected group mod" : "Edit mod",
     okButton: "Save",
-    shortnameValue: isModGroup(mod) ? editingGroupItem?.shortname : mod.shortname,
-    detailsValue: isModGroup(mod) ? editingGroupItem?.fullContent : mod.fullContent,
+    shortnameValue: isModGroup(mod)
+      ? editingGroupItem?.shortname
+      : mod.shortname,
+    detailsValue: isModGroup(mod)
+      ? editingGroupItem?.fullContent
+      : mod.fullContent,
     initialPosition: mod.position,
     initialAfterCharName: mod.afterCharName,
     includeGroupName: isModGroup(mod),
@@ -1380,21 +1573,34 @@ export async function handleModEntryEdit(actionOwner) {
     mod.fullContent = edited.fullContent;
   }
 
-  mod.characterId = resolveCharacterModAssignment(edited.characterMod === true, mod.characterId);
+  mod.characterId = resolveCharacterModAssignment(
+    edited.characterMod === true,
+    mod.characterId,
+  );
   mod.position = normalizeModPosition(edited.position);
-  mod.afterCharName = mod.position === MOD_POSITION_AFTER_CHAR
-    ? (normalizeModAfterCharName(edited.afterCharName) || getDefaultAfterCharName())
-    : "";
-  mod.stateScope = edited.localState ? MOD_STATE_SCOPE_LOCAL : MOD_STATE_SCOPE_GLOBAL;
+  mod.afterCharName =
+    mod.position === MOD_POSITION_AFTER_CHAR
+      ? normalizeModAfterCharName(edited.afterCharName) ||
+        getDefaultAfterCharName()
+      : "";
+  mod.stateScope = edited.localState
+    ? MOD_STATE_SCOPE_LOCAL
+    : MOD_STATE_SCOPE_GLOBAL;
   mod.imageTypes = normalizeModImageTypes(edited.imageTypes);
   if (isModGroup(mod)) {
     mod.isMultiselect = edited.multiselect === true;
     mod.selectedItemIds = mod.isMultiselect
-      ? (Array.isArray(mod.selectedItemIds) ? mod.selectedItemIds : [mod.selectedItemId]).filter(Boolean)
+      ? (Array.isArray(mod.selectedItemIds)
+          ? mod.selectedItemIds
+          : [mod.selectedItemId]
+        ).filter(Boolean)
       : [mod.selectedItemId].filter(Boolean);
   }
 
-  if (previousStateScope !== MOD_STATE_SCOPE_LOCAL && mod.stateScope === MOD_STATE_SCOPE_LOCAL) {
+  if (
+    previousStateScope !== MOD_STATE_SCOPE_LOCAL &&
+    mod.stateScope === MOD_STATE_SCOPE_LOCAL
+  ) {
     seedCurrentChatLocalStateFromMod(mods, mod, effectiveModBeforeEdit);
   }
 
@@ -1427,24 +1633,37 @@ export async function handleModDelete(actionOwner) {
 
     const nextMods = mods.filter((item) => item.id !== modId);
     patchUiState({
-      openModImageTypesForId: getUiState().openModImageTypesForId === modId ? null : getUiState().openModImageTypesForId,
-      openModPositionForId: getUiState().openModPositionForId === modId ? null : getUiState().openModPositionForId,
-      openModGroupForId: getUiState().openModGroupForId === modId ? null : getUiState().openModGroupForId,
+      openModImageTypesForId:
+        getUiState().openModImageTypesForId === modId
+          ? null
+          : getUiState().openModImageTypesForId,
+      openModPositionForId:
+        getUiState().openModPositionForId === modId
+          ? null
+          : getUiState().openModPositionForId,
+      openModGroupForId:
+        getUiState().openModGroupForId === modId
+          ? null
+          : getUiState().openModGroupForId,
     });
     saveModsSettings(nextMods);
     return;
   }
 
-  const effectiveMod = getModsSettings().find((item) => item.id === modId) || mod;
-  const selectedItem = isModGroup(effectiveMod) ? getSelectedModItem(effectiveMod) : null;
+  const effectiveMod =
+    getModsSettings().find((item) => item.id === modId) || mod;
+  const selectedItem = isModGroup(effectiveMod)
+    ? getSelectedModItem(effectiveMod)
+    : null;
   if (!selectedItem) {
     return;
   }
 
   const itemCount = Array.isArray(mod.items) ? mod.items.length : 0;
-  const deleteMessage = itemCount <= 1
-    ? "Are you sure you want to delete selected mod from this group? If you remove this mod whole group will be removed"
-    : "Are you sure you want to delete selected mod from this group?";
+  const deleteMessage =
+    itemCount <= 1
+      ? "Are you sure you want to delete selected mod from this group? If you remove this mod whole group will be removed"
+      : "Are you sure you want to delete selected mod from this group?";
 
   const confirmed = await Popup?.show?.confirm?.(
     "Delete selected group mod",
@@ -1459,23 +1678,38 @@ export async function handleModDelete(actionOwner) {
   if (itemCount <= 1) {
     const nextMods = mods.filter((item) => item.id !== modId);
     patchUiState({
-      openModImageTypesForId: getUiState().openModImageTypesForId === modId ? null : getUiState().openModImageTypesForId,
-      openModPositionForId: getUiState().openModPositionForId === modId ? null : getUiState().openModPositionForId,
-      openModGroupForId: getUiState().openModGroupForId === modId ? null : getUiState().openModGroupForId,
+      openModImageTypesForId:
+        getUiState().openModImageTypesForId === modId
+          ? null
+          : getUiState().openModImageTypesForId,
+      openModPositionForId:
+        getUiState().openModPositionForId === modId
+          ? null
+          : getUiState().openModPositionForId,
+      openModGroupForId:
+        getUiState().openModGroupForId === modId
+          ? null
+          : getUiState().openModGroupForId,
     });
     saveModsSettings(nextMods);
     return;
   }
 
-  const selectedIndex = mod.items.findIndex((item) => item.id === selectedItem.id);
+  const selectedIndex = mod.items.findIndex(
+    (item) => item.id === selectedItem.id,
+  );
   if (selectedIndex === -1) {
     return;
   }
   mod.items.splice(selectedIndex, 1);
-  const nextSelection = mod.items[Math.min(selectedIndex, mod.items.length - 1)] || mod.items[0];
-  mod.selectedItemIds = mod.isMultiselect === true
-    ? (mod.selectedItemIds || []).filter((itemId) => itemId !== selectedItem.id)
-    : [nextSelection?.id || ""];
+  const nextSelection =
+    mod.items[Math.min(selectedIndex, mod.items.length - 1)] || mod.items[0];
+  mod.selectedItemIds =
+    mod.isMultiselect === true
+      ? (mod.selectedItemIds || []).filter(
+          (itemId) => itemId !== selectedItem.id,
+        )
+      : [nextSelection?.id || ""];
   mod.selectedItemId = mod.selectedItemIds[0] || nextSelection?.id || "";
   saveModsSettings(mods);
 }
@@ -1500,10 +1734,16 @@ export function handleModPanelInput(event) {
   mods[index].afterCharName = normalizeModAfterCharName(target.value);
   saveModsSettings(mods, { rerender: false });
 
-  const isValid = Boolean(findCharacterByName(_getState?.(), mods[index].afterCharName))
-    || isSupportedAfterCharMacro(mods[index].afterCharName);
+  const isValid =
+    Boolean(findCharacterByName(_getState?.(), mods[index].afterCharName)) ||
+    isSupportedAfterCharMacro(mods[index].afterCharName);
   target.classList.toggle("is-invalid", !isValid);
-  target.setAttribute("title", isValid ? "Character name for after-char mod" : "Character not found in this chat");
+  target.setAttribute(
+    "title",
+    isValid
+      ? "Character name for after-char mod"
+      : "Character not found in this chat",
+  );
 }
 
 export function handleModPanelClick(event) {
@@ -1602,10 +1842,18 @@ export function handleModPanelChange(event) {
 export function handleModPanelOutsideClick(event) {
   const uiState = getUiState();
   if (!event.target?.closest?.(".mods-position-filter")) {
-    modsPositionFilterRoot?.find(".mods-position-filter__menu").removeClass("is-open");
-    modsPositionFilterRoot?.find(".mods-position-filter__trigger").attr("aria-expanded", "false");
+    modsPositionFilterRoot
+      ?.find(".mods-position-filter__menu")
+      .removeClass("is-open");
+    modsPositionFilterRoot
+      ?.find(".mods-position-filter__trigger")
+      .attr("aria-expanded", "false");
   }
-  if (!uiState.openModImageTypesForId && !uiState.openModPositionForId && !uiState.openModGroupForId) {
+  if (
+    !uiState.openModImageTypesForId &&
+    !uiState.openModPositionForId &&
+    !uiState.openModGroupForId
+  ) {
     return;
   }
 
@@ -1676,7 +1924,12 @@ export function handleModDragOver(event) {
   event.preventDefault();
   const nativeEvent = event.originalEvent || event;
   const mods = getNormalizedModsSettings();
-  const dropMode = resolveModDropMode(modItemElement, mods, draggedModId, nativeEvent);
+  const dropMode = resolveModDropMode(
+    modItemElement,
+    mods,
+    draggedModId,
+    nativeEvent,
+  );
   if (!dropMode) {
     return;
   }
@@ -1701,7 +1954,9 @@ export function handleModDrop(event) {
   }
 
   const nativeEvent = event.originalEvent || event;
-  const draggedId = String(nativeEvent.dataTransfer?.getData("text/plain") || draggedModId || "").trim();
+  const draggedId = String(
+    nativeEvent.dataTransfer?.getData("text/plain") || draggedModId || "",
+  ).trim();
   const targetId = String(modItemElement.dataset.modId || "").trim();
   if (!draggedId || !targetId || draggedId === targetId) {
     return;
@@ -1714,11 +1969,19 @@ export function handleModDrop(event) {
     return;
   }
 
-  const dropMode = String(modItemElement.dataset.dropMode || resolveModDropMode(modItemElement, mods, draggedId, nativeEvent) || "").trim();
+  const dropMode = String(
+    modItemElement.dataset.dropMode ||
+      resolveModDropMode(modItemElement, mods, draggedId, nativeEvent) ||
+      "",
+  ).trim();
   const draggedModEntry = mods[draggedIndex];
   const targetMod = mods[targetIndex];
 
-  if (dropMode === "into" && isModGroup(targetMod) && !isModGroup(draggedModEntry)) {
+  if (
+    dropMode === "into" &&
+    isModGroup(targetMod) &&
+    !isModGroup(draggedModEntry)
+  ) {
     void (async () => {
       const shouldConvert = await Popup?.show?.confirm?.(
         "Add to group",
@@ -1732,14 +1995,19 @@ export function handleModDrop(event) {
       }
 
       const nextMods = getNormalizedModsSettings();
-      const nextDraggedIndex = nextMods.findIndex((mod) => mod.id === draggedId);
+      const nextDraggedIndex = nextMods.findIndex(
+        (mod) => mod.id === draggedId,
+      );
       const nextTargetIndex = nextMods.findIndex((mod) => mod.id === targetId);
       if (nextDraggedIndex === -1 || nextTargetIndex === -1) {
         return;
       }
 
       const [sourceMod] = nextMods.splice(nextDraggedIndex, 1);
-      const adjustedTargetIndex = nextDraggedIndex < nextTargetIndex ? nextTargetIndex - 1 : nextTargetIndex;
+      const adjustedTargetIndex =
+        nextDraggedIndex < nextTargetIndex
+          ? nextTargetIndex - 1
+          : nextTargetIndex;
       const targetGroup = nextMods[adjustedTargetIndex];
       if (!isModGroup(targetGroup)) {
         return;
@@ -1750,12 +2018,15 @@ export function handleModDrop(event) {
         fullContent: sourceMod.fullContent,
       });
 
-      targetGroup.items = Array.isArray(targetGroup.items) ? targetGroup.items : [];
+      targetGroup.items = Array.isArray(targetGroup.items)
+        ? targetGroup.items
+        : [];
       targetGroup.items.push(nextItem);
       targetGroup.selectedItemId = nextItem.id;
-      targetGroup.selectedItemIds = targetGroup.isMultiselect === true
-        ? [...new Set([...(targetGroup.selectedItemIds || []), nextItem.id])]
-        : [nextItem.id];
+      targetGroup.selectedItemIds =
+        targetGroup.isMultiselect === true
+          ? [...new Set([...(targetGroup.selectedItemIds || []), nextItem.id])]
+          : [nextItem.id];
 
       patchUiState({
         openModImageTypesForId: null,
@@ -1799,7 +2070,8 @@ export function handleModDragEnd(event) {
 }
 
 export function clearModDragIndicators(modsPanelRoot) {
-  modsPanelRoot?.find(".mod-item")
+  modsPanelRoot
+    ?.find(".mod-item")
     .removeClass("drop-before drop-after drop-into")
     .each((_, element) => {
       delete element.dataset.dropMode;
@@ -1815,7 +2087,12 @@ export function resolveModItemElement(event) {
   return target.closest(".mod-item");
 }
 
-export function resolveModDropMode(modItemElement, mods, draggedId, nativeEvent) {
+export function resolveModDropMode(
+  modItemElement,
+  mods,
+  draggedId,
+  nativeEvent,
+) {
   const targetId = String(modItemElement?.dataset?.modId || "").trim();
   if (!targetId || !draggedId || targetId === draggedId) {
     return null;
@@ -1828,7 +2105,9 @@ export function resolveModDropMode(modItemElement, mods, draggedId, nativeEvent)
   }
 
   const rect = modItemElement.getBoundingClientRect();
-  const pointerY = Number.isFinite(nativeEvent?.clientY) ? nativeEvent.clientY : (rect.top + rect.height / 2);
+  const pointerY = Number.isFinite(nativeEvent?.clientY)
+    ? nativeEvent.clientY
+    : rect.top + rect.height / 2;
   const offsetY = pointerY - rect.top;
   const ratio = rect.height > 0 ? offsetY / rect.height : 0.5;
 
@@ -1846,10 +2125,15 @@ export function resolveModDropMode(modItemElement, mods, draggedId, nativeEvent)
 let externalEventBindingsInitialized = false;
 
 function bindDocumentEvents() {
-  $(document).off("click.stExtensionModsPanel").on("click.stExtensionModsPanel", handleModPanelOutsideClick);
+  $(document)
+    .off("click.stExtensionModsPanel")
+    .on("click.stExtensionModsPanel", handleModPanelOutsideClick);
   $(document)
     .off("st-charmander:mods-panel-visibility-changed")
-    .on("st-charmander:mods-panel-visibility-changed", renderModsPanelVisibility);
+    .on(
+      "st-charmander:mods-panel-visibility-changed",
+      renderModsPanelVisibility,
+    );
 }
 
 function bindContextEvents() {

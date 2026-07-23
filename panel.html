@@ -1,66 +1,228 @@
 <div id="st-extension-right-panel" class="st-extension-right-panel">
-    <div class="st-extension-right-panel__layout">
-        <div class="st-extension-right-panel__main">
-            <div id="character-details-panel" class="character-details-panel"></div>
-            <div id="character-details-manager" class="character-manager hidden"></div>
-            <div id="character-details-floating" class="character-floating"></div>
-        </div>
-        <div class="st-extension-right-panel__footer">
-            <button id="character-details-preview-prompts" class="layer-state character-details-preview-toggle" type="button" title="Preview prompt before image generation"><i class="fa-solid fa-eye"></i></button>
-            <button id="character-details-add-guide" class="layer-state character-details-preview-toggle" type="button" title="Add guide for prompt"><i class="fa-solid fa-crosshairs"></i></button>
-            <div id="character-details-quick-resolution-wrap" class="mod-item__position-wrap character-details-footer__quick-resolution-wrap displayNone">
-                <button id="character-details-quick-resolution" class="layer-state character-details-preview-toggle" type="button" title="Quick resolution"><i class="fa-solid fa-camera-rotate"></i></button>
-                <div id="character-details-quick-resolution-menu" class="mod-item__position-popup character-details-footer__quick-resolution-menu"></div>
-            </div>
-            <button id="character-details-free-generate" class="menu_button character-details-footer__icon-button" type="button" title="Free generation"><i class="fa-solid fa-pen-to-square"></i></button>
-            <button id="character-details-portrait" class="menu_button character-details-footer__icon-button" type="button" title="Generate portrait of active character"><i class="fa-solid fa-user"></i></button>
-            <button id="character-details-fullbody" class="menu_button character-details-footer__icon-button" type="button" title="Generate full body of active character"><i class="fa-solid fa-person"></i></button>
-            <button id="character-details-background" class="menu_button character-details-footer__icon-button" type="button" title="Generate background"><i class="fa-solid fa-mountain-sun"></i></button>
-            <button id="character-details-viewer-eyes" class="menu_button character-details-footer__icon-button" type="button" title="Generate view from viewer's eyes"><i class="fa-solid fa-eye"></i></button>
-            <button id="character-details-scene" class="menu_button character-details-footer__icon-button" type="button" title="Generate current scene"><i class="fa-solid fa-people-group"></i></button>
-            <button id="character-details-generate" class="menu_button character-details-footer__generate character-details-footer__icon-button" type="button" title="Generate character descriptions using LLM">
-                <i class="fa-solid fa-wand-magic-sparkles"></i>
-            </button>
-        </div>
+  <div class="st-extension-right-panel__layout">
+    <div class="st-extension-right-panel__main">
+      <div id="character-details-panel" class="character-details-panel"></div>
+      <div
+        id="character-details-manager"
+        class="character-manager hidden"
+      ></div>
+      <div id="character-details-floating" class="character-floating"></div>
     </div>
-    <button id="st-extension-right-compact-toggle" class="st-extension-right-compact-toggle displayNone" type="button" title="Compact view">
-        <i class="fa-solid fa-angle-down"></i>
-    </button>
-    <button id="st-extension-right-compact-restore" class="st-extension-right-compact-restore displayNone" type="button" title="Show character details">
-        <i class="fa-solid fa-angle-up"></i>
-    </button>
+    <div class="st-extension-right-panel__footer">
+      <button
+        id="character-details-preview-prompts"
+        class="layer-state character-details-preview-toggle"
+        type="button"
+        title="Preview prompt before image generation"
+      >
+        <i class="fa-solid fa-eye"></i>
+      </button>
+      <button
+        id="character-details-add-guide"
+        class="layer-state character-details-preview-toggle"
+        type="button"
+        title="Add guide for prompt"
+      >
+        <i class="fa-solid fa-crosshairs"></i>
+      </button>
+      <div
+        id="character-details-quick-resolution-wrap"
+        class="mod-item__position-wrap character-details-footer__quick-resolution-wrap displayNone"
+      >
+        <button
+          id="character-details-quick-resolution"
+          class="layer-state character-details-preview-toggle"
+          type="button"
+          title="Quick resolution"
+        >
+          <i class="fa-solid fa-camera-rotate"></i>
+        </button>
+        <div
+          id="character-details-quick-resolution-menu"
+          class="mod-item__position-popup character-details-footer__quick-resolution-menu"
+        ></div>
+      </div>
+      <button
+        id="character-details-free-generate"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Free generation"
+      >
+        <i class="fa-solid fa-pen-to-square"></i>
+      </button>
+      <button
+        id="character-details-portrait"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Generate portrait of active character"
+      >
+        <i class="fa-solid fa-user"></i>
+      </button>
+      <button
+        id="character-details-fullbody"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Generate full body of active character"
+      >
+        <i class="fa-solid fa-person"></i>
+      </button>
+      <button
+        id="character-details-background"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Generate background"
+      >
+        <i class="fa-solid fa-mountain-sun"></i>
+      </button>
+      <button
+        id="character-details-viewer-eyes"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Generate view from viewer's eyes"
+      >
+        <i class="fa-solid fa-eye"></i>
+      </button>
+      <button
+        id="character-details-scene"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Generate current scene"
+      >
+        <i class="fa-solid fa-people-group"></i>
+      </button>
+      <button
+        id="character-details-generate"
+        class="menu_button character-details-footer__generate character-details-footer__icon-button"
+        type="button"
+        title="Generate character descriptions using LLM"
+      >
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+      </button>
+    </div>
+  </div>
+  <button
+    id="st-extension-right-compact-toggle"
+    class="st-extension-right-compact-toggle displayNone"
+    type="button"
+    title="Compact view"
+  >
+    <i class="fa-solid fa-angle-down"></i>
+  </button>
+  <button
+    id="st-extension-right-compact-restore"
+    class="st-extension-right-compact-restore displayNone"
+    type="button"
+    title="Show character details"
+  >
+    <i class="fa-solid fa-angle-up"></i>
+  </button>
 </div>
 
-<div id="st-extension-left-panel" class="st-extension-left-panel is-desktop-collapsed is-hidden">
-    <div class="st-extension-left-panel__layout">
-        <div id="character-details-mods-panel" class="character-mods-panel"></div>
-        <div class="st-extension-left-panel__footer">
-            <div id="character-details-mods-position-filter" class="mods-position-filter mod-item__position-wrap" aria-label="Filter mods by position">
-                <button class="menu_button mods-position-filter__trigger" type="button" data-action="toggle-mods-filter-menu" aria-expanded="false">
-                    <span class="mods-position-filter__label"><i class="fa-solid fa-list"></i><span>All</span></span>
-                    <i class="fa-solid fa-chevron-up"></i>
-                </button>
-                <div class="mods-position-filter__menu mod-item__position-popup opens-upward">
-                    <button type="button" class="mod-item__position-option is-active" data-mods-filter="all"><i class="fa-solid fa-list"></i><span>All</span></button>
-                    <button type="button" class="mod-item__position-option" data-mods-filter="start"><i class="fa-solid fa-hourglass-start"></i><span>Beginning</span></button>
-                    <button type="button" class="mod-item__position-option" data-mods-filter="after-char"><i class="fa-solid fa-user-tag"></i><span>After char X</span></button>
-                    <button type="button" class="mod-item__position-option" data-mods-filter="middle"><i class="fa-solid fa-person-circle-plus"></i><span>After chars</span></button>
-                    <button type="button" class="mod-item__position-option" data-mods-filter="end"><i class="fa-solid fa-hourglass-end"></i><span>End</span></button>
-                </div>
-            </div>
-            <div class="mods-search-wrap">
-                <input id="character-details-mods-search" class="text_pole mods-search-input" type="search" placeholder="Search mods" aria-label="Search mods">
-            </div>
-            <button id="character-details-mods-add" class="menu_button character-details-footer__icon-button" type="button" title="Add mod">
-                <i class="fa-solid fa-plus"></i>
-            </button>
+<div
+  id="st-extension-left-panel"
+  class="st-extension-left-panel is-desktop-collapsed is-hidden"
+>
+  <div class="st-extension-left-panel__layout">
+    <div id="character-details-mods-panel" class="character-mods-panel"></div>
+    <div class="st-extension-left-panel__footer">
+      <div
+        id="character-details-mods-position-filter"
+        class="mods-position-filter mod-item__position-wrap"
+        aria-label="Filter mods by position"
+      >
+        <button
+          class="menu_button mods-position-filter__trigger"
+          type="button"
+          data-action="toggle-mods-filter-menu"
+          aria-expanded="false"
+        >
+          <span class="mods-position-filter__label"
+            ><i class="fa-solid fa-list"></i><span>Manual</span></span
+          >
+          <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <div
+          class="mods-position-filter__menu mod-item__position-popup opens-upward"
+        >
+          <button
+            type="button"
+            class="mod-item__position-option is-active"
+            data-mods-filter="all"
+          >
+            <i class="fa-solid fa-list"></i><span>Manual Mods</span>
+          </button>
+          <button
+            type="button"
+            class="mod-item__position-option"
+            data-mods-filter="start"
+          >
+            <i class="fa-solid fa-hourglass-start"></i><span>Beginning</span>
+          </button>
+          <button
+            type="button"
+            class="mod-item__position-option"
+            data-mods-filter="after-char"
+          >
+            <i class="fa-solid fa-user-tag"></i><span>After char X</span>
+          </button>
+          <button
+            type="button"
+            class="mod-item__position-option"
+            data-mods-filter="middle"
+          >
+            <i class="fa-solid fa-person-circle-plus"></i
+            ><span>After chars</span>
+          </button>
+          <button
+            type="button"
+            class="mod-item__position-option"
+            data-mods-filter="end"
+          >
+            <i class="fa-solid fa-hourglass-end"></i><span>End</span>
+          </button>
+          <button
+            type="button"
+            class="mod-item__position-option"
+            data-mods-filter="ai-techniques"
+          >
+            <i class="fa-solid fa-robot"></i><span>AI Techniques</span>
+          </button>
         </div>
+      </div>
+      <div class="mods-search-wrap">
+        <input
+          id="character-details-mods-search"
+          class="text_pole mods-search-input"
+          type="search"
+          placeholder="Search mods"
+          aria-label="Search mods"
+        />
+      </div>
+      <button
+        id="character-details-mods-add"
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        title="Add mod"
+      >
+        <i class="fa-solid fa-plus"></i>
+      </button>
     </div>
+  </div>
 </div>
 
-<button id="st-extension-mobile-drawer-toggle" class="st-extension-mobile-drawer-toggle" type="button" title="Show character panel">
-    <i class="fa-solid fa-angle-left"></i>
+<button
+  id="st-extension-mobile-drawer-toggle"
+  class="st-extension-mobile-drawer-toggle"
+  type="button"
+  title="Show character panel"
+>
+  <i class="fa-solid fa-angle-left"></i>
 </button>
-<button id="st-extension-mobile-drawer-left-toggle" class="st-extension-mobile-drawer-left-toggle displayNone" type="button" title="Show mods panel">
-    <i class="fa-solid fa-angle-right"></i>
+<button
+  id="st-extension-mobile-drawer-left-toggle"
+  class="st-extension-mobile-drawer-left-toggle displayNone"
+  type="button"
+  title="Show mods panel"
+>
+  <i class="fa-solid fa-angle-right"></i>
 </button>

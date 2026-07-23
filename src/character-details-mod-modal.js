@@ -31,7 +31,9 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
 
   let nextGroupName = String(initialGroupName || "").trim();
   let nextShortname = String(shortnameValue || "").trim();
-  let nextDetails = String(detailsValue || "").replace(/\r\n?/g, "\n").trim();
+  let nextDetails = String(detailsValue || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
   let nextPosition = normalizeModPosition(initialPosition);
   let nextAfterCharName = String(initialAfterCharName || "").trim();
   let nextCharacterMod = initialCharacterMod === true;
@@ -124,17 +126,32 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
         leftAlign: true,
         customInputs,
         customButtons: [
-          ...(allowDelete ? [{ text: "Delete", result: 2, classes: ["mod-editor__delete-button"] }] : []),
-          ...(allowConvertToGroup ? [{ text: "Convert to group", result: 3 }] : []),
+          ...(allowDelete
+            ? [
+                {
+                  text: "Delete",
+                  result: 2,
+                  classes: ["mod-editor__delete-button"],
+                },
+              ]
+            : []),
+          ...(allowConvertToGroup
+            ? [{ text: "Convert to group", result: 3 }]
+            : []),
         ],
         onOpen: (openedPopup) => {
-          const input = openedPopup?.dlg?.querySelector("#st_extension_mod_position");
+          const input = openedPopup?.dlg?.querySelector(
+            "#st_extension_mod_position",
+          );
           if (!(input instanceof HTMLInputElement)) {
             return;
           }
 
           const positionWrap = document.createElement("div");
-          positionWrap.classList.add("mod-editor__position-wrap", "mod-item__position-wrap");
+          positionWrap.classList.add(
+            "mod-editor__position-wrap",
+            "mod-item__position-wrap",
+          );
           const valueInput = document.createElement("input");
           valueInput.type = "hidden";
           valueInput.id = input.id;
@@ -144,16 +161,26 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
           trigger.type = "button";
           trigger.classList.add("menu_button", "mod-editor__position-trigger");
           const menu = document.createElement("div");
-          menu.classList.add("mod-item__position-popup", "mod-editor__position-popup");
+          menu.classList.add(
+            "mod-item__position-popup",
+            "mod-editor__position-popup",
+          );
 
           const setSelectedPosition = (position) => {
-            const selected = MOD_POSITION_DEFINITIONS.find((definition) => definition.key === position)
-              || MOD_POSITION_DEFINITIONS[0];
+            const selected =
+              MOD_POSITION_DEFINITIONS.find(
+                (definition) => definition.key === position,
+              ) || MOD_POSITION_DEFINITIONS[0];
             valueInput.value = selected.key;
             trigger.innerHTML = `<i class="fa-solid ${selected.icon}"></i><span>${selected.label}</span><i class="fa-solid fa-chevron-down"></i>`;
-            menu.querySelectorAll(".mod-item__position-option").forEach((option) => {
-              option.classList.toggle("is-active", option.dataset.position === selected.key);
-            });
+            menu
+              .querySelectorAll(".mod-item__position-option")
+              .forEach((option) => {
+                option.classList.toggle(
+                  "is-active",
+                  option.dataset.position === selected.key,
+                );
+              });
           };
 
           for (const definition of MOD_POSITION_DEFINITIONS) {
@@ -180,7 +207,9 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
           imageTypesHeading.classList.add("mod-editor__image-types-heading");
           imageTypesHeading.textContent = "Use mod in";
           const firstImageTypeLabel = openedPopup.dlg
-            .querySelector(`#st_extension_mod_image_type_${MOD_IMAGE_TYPE_DEFINITIONS[0]?.key}`)
+            .querySelector(
+              `#st_extension_mod_image_type_${MOD_IMAGE_TYPE_DEFINITIONS[0]?.key}`,
+            )
             ?.closest("label");
           if (firstImageTypeLabel) {
             firstImageTypeLabel.before(imageTypesHeading);
@@ -189,7 +218,9 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
           }
 
           for (const definition of MOD_IMAGE_TYPE_DEFINITIONS) {
-            const checkbox = openedPopup.dlg.querySelector(`#st_extension_mod_image_type_${definition.key}`);
+            const checkbox = openedPopup.dlg.querySelector(
+              `#st_extension_mod_image_type_${definition.key}`,
+            );
             const label = checkbox?.closest("label");
             if (!checkbox || !label) {
               continue;
@@ -218,12 +249,22 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
     }
 
     const groupNameInput = includeGroupName
-      ? normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_group_name"))
+      ? normalizeRequiredModShortname(
+          popup.inputResults?.get("st_extension_mod_group_name"),
+        )
       : "";
-    const shortnameInput = normalizeRequiredModShortname(popup.inputResults?.get("st_extension_mod_shortname"));
-    const positionInput = normalizeModPosition(popup.inputResults?.get("st_extension_mod_position"));
-    const afterCharNameInput = String(popup.inputResults?.get("st_extension_mod_after_char_name") || "").trim();
-    const detailsInput = String(popup.inputResults?.get("st_extension_mod_details") || "")
+    const shortnameInput = normalizeRequiredModShortname(
+      popup.inputResults?.get("st_extension_mod_shortname"),
+    );
+    const positionInput = normalizeModPosition(
+      popup.inputResults?.get("st_extension_mod_position"),
+    );
+    const afterCharNameInput = String(
+      popup.inputResults?.get("st_extension_mod_after_char_name") || "",
+    ).trim();
+    const detailsInput = String(
+      popup.inputResults?.get("st_extension_mod_details") || "",
+    )
       .replace(/\r\n?/g, "\n")
       .trim();
     const characterModInput = includeModSettings
@@ -232,13 +273,20 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
     const localStateInput = includeModSettings
       ? Boolean(popup.inputResults?.get("st_extension_mod_local_state"))
       : false;
-    const multiselectInput = includeGroupName && includeModSettings
-      ? Boolean(popup.inputResults?.get("st_extension_mod_multiselect"))
-      : false;
-    const imageTypesInput = Object.fromEntries(MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => [
-      definition.key,
-      Boolean(popup.inputResults?.get(`st_extension_mod_image_type_${definition.key}`)),
-    ]));
+    const multiselectInput =
+      includeGroupName && includeModSettings
+        ? Boolean(popup.inputResults?.get("st_extension_mod_multiselect"))
+        : false;
+    const imageTypesInput = Object.fromEntries(
+      MOD_IMAGE_TYPE_DEFINITIONS.map((definition) => [
+        definition.key,
+        Boolean(
+          popup.inputResults?.get(
+            `st_extension_mod_image_type_${definition.key}`,
+          ),
+        ),
+      ]),
+    );
 
     if (includeGroupName && !groupNameInput) {
       toastr.warning("Group name is required.", "Character Details");
