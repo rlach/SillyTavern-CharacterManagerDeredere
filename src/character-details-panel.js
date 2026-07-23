@@ -1023,13 +1023,43 @@ function formatGuidePromptOptionLabel(
   return truncateTextToPixelWidth(oneLineText, maxWidthPx, font);
 }
 
-async function askGuideForPrompt() {
-  if (!shouldAddPromptGuide()) {
-    return "";
+function applyGuidePresenceOverrides(data, presenceOverrides) {
+  if (!(presenceOverrides instanceof Map) || !presenceOverrides.size) {
+    return data;
   }
 
-  const context = getContext();
+  return {
+    ...data,
+    characters: (Array.isArray(data?.characters) ? data.characters : []).map(
+      (character) => {
+        const characterId = String(character?.id || "").trim();
+        if (!characterId || !presenceOverrides.has(characterId)) {
+          return character;
+        }
+
+        return {
+          ...character,
+          presence: presenceOverrides.get(characterId),
+        };
+      },
+    ),
+  };
+}
+
+async function askGuideForPrompt(data, context = getContext()) {
+  if (!shouldAddPromptGuide()) {
+    return {
+      guideText: "",
+      presenceOverrides: new Map(),
+    };
+  }
+
   let savedPromptList = readGuidePromptList(context);
+  const presenceOverrides = new Map();
+  const guideCharacters = Array.isArray(data?.characters)
+    ? data.characters
+    : [];
+  const avatarMap = readAvatarMap(context);
 
   const guidePopupIdSuffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const guidePromptSelectId = `character-details-guide-select-${guidePopupIdSuffix}`;
@@ -1067,6 +1097,24 @@ async function askGuideForPrompt() {
           <i class="fa-solid fa-trash"></i>
         </button>
       </div>
+      <section class="character-details__guide-characters" aria-labelledby="character-details-guide-characters-title">
+        <h3 id="character-details-guide-characters-title">Who to include</h3>
+        <div class="character-details__guide-character-list">
+          ${guideCharacters.length ? guideCharacters.map((character) => {
+            const characterId = String(character?.id || "").trim();
+            const characterName = String(character?.name || "Unnamed").trim() || "Unnamed";
+            const isPresent = character?.presence === true;
+            const avatarSource = getCharacterAvatarSource(character, context, avatarMap);
+            const avatar = avatarSource
+              ? `<img class="character-details__guide-character-avatar" src="${escapeHtml(avatarSource)}" alt="" />`
+              : `<span class="character-details__guide-character-initials">${escapeHtml(getInitials(characterName))}</span>`;
+            return `<button class="character-details__guide-character ${isPresent ? "is-present" : "is-absent"}" type="button" data-character-id="${escapeHtml(characterId)}" aria-pressed="${isPresent}" title="${escapeHtml(characterName)}: ${isPresent ? "included" : "excluded"}">
+              ${avatar}
+              <span class="character-details__guide-character-name">${escapeHtml(characterName)}</span>
+            </button>`;
+          }).join("") : '<span class="character-details__guide-character-empty">No characters available.</span>'}
+        </div>
+      </section>
     </div>
   `;
 
@@ -1101,6 +1149,9 @@ async function askGuideForPrompt() {
       );
       const overwriteCheckbox = popup.dlg.querySelector(
         `#${guidePromptOverwriteCheckboxId}`,
+      );
+      const characterButtons = popup.dlg.querySelectorAll(
+        ".character-details__guide-character",
       );
       const saveLabel = saveCheckbox?.closest("label");
       const overwriteLabel = overwriteCheckbox?.closest("label");
@@ -1257,6 +1308,33 @@ async function askGuideForPrompt() {
           syncGuideControls();
         });
       }
+
+      for (const characterButton of characterButtons) {
+        characterButton.addEventListener("click", () => {
+          const characterId = String(
+            characterButton.dataset.characterId || "",
+          ).trim();
+          const character = guideCharacters.find(
+            (item) => String(item?.id || "").trim() === characterId,
+          );
+          if (!characterId || !character) {
+            return;
+          }
+
+          const isPresent = presenceOverrides.has(characterId)
+            ? presenceOverrides.get(characterId)
+            : character.presence === true;
+          const nextPresence = !isPresent;
+          presenceOverrides.set(characterId, nextPresence);
+          characterButton.classList.toggle("is-present", nextPresence);
+          characterButton.classList.toggle("is-absent", !nextPresence);
+          characterButton.setAttribute(
+            "aria-pressed",
+            nextPresence ? "true" : "false",
+          );
+          characterButton.title = `${character.name || "Unnamed"}: ${nextPresence ? "included" : "excluded"}`;
+        });
+      }
     },
     onClosing: (popup) => {
       if (popup.result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -1292,7 +1370,10 @@ async function askGuideForPrompt() {
     return null;
   }
 
-  return String(guide || "").trim();
+  return {
+    guideText: String(guide || "").trim(),
+    presenceOverrides,
+  };
 }
 
 async function generateCharacterImage(mode, triggerButton = null) {
@@ -1339,10 +1420,18 @@ async function generateCharacterImage(mode, triggerButton = null) {
   }
 
   const data = loadCharacterDetails(context);
-  const activeCharacter = getActiveCharacter(data);
-  const viewerCharacter = data.viewerCharacterId
-    ? (data.characters || []).find(
-        (character) => character.id === data.viewerCharacterId,
+  const guideRequest = await askGuideForPrompt(data, context);
+  if (guideRequest === null) {
+    clearActiveImageGeneration(button);
+    return;
+  }
+
+  const { guideText, presenceOverrides } = guideRequest;
+  const generationData = applyGuidePresenceOverrides(data, presenceOverrides);
+  const activeCharacter = getActiveCharacter(generationData);
+  const viewerCharacter = generationData.viewerCharacterId
+    ? (generationData.characters || []).find(
+        (character) => character.id === generationData.viewerCharacterId,
       ) || null
     : null;
   const modsForGeneration = getModsForGeneration(data, mode, context);
@@ -1361,7 +1450,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
     }
 
     characterDescription = buildCharacterVisualDescription(
-      data,
+      generationData,
       activeCharacter.id,
       {
         additionalWearingItems:
@@ -1404,12 +1493,12 @@ async function generateCharacterImage(mode, triggerButton = null) {
       return;
     }
 
-    const presentWithoutViewer = getPresentCharacters(data, {
+    const presentWithoutViewer = getPresentCharacters(generationData, {
       excludeId: viewerCharacter.id,
     });
     charactersPresentLine = buildCharactersPresentLine(presentWithoutViewer);
     characterDescription = buildCharactersVisualDescriptions(
-      data,
+      generationData,
       presentWithoutViewer,
       {
         extraByCharacterId: afterCharModsByCharacterId,
@@ -1422,21 +1511,15 @@ async function generateCharacterImage(mode, triggerButton = null) {
   }
 
   if (mode === "scene") {
-    const presentAll = getPresentCharacters(data);
+    const presentAll = getPresentCharacters(generationData);
     charactersPresentLine = buildCharactersPresentLine(presentAll);
-    characterDescription = buildCharactersVisualDescriptions(data, presentAll, {
+    characterDescription = buildCharactersVisualDescriptions(generationData, presentAll, {
       extraByCharacterId: afterCharModsByCharacterId,
     });
     scenePrompt = String(
       extension_settings?.[extensionName]?.describe_current_scene_prompt || "",
     ).trim();
     modeLine = "You are writing a CURRENT SCENE prompt for image generation.";
-  }
-
-  const guideText = await askGuideForPrompt();
-  if (guideText === null) {
-    clearActiveImageGeneration(button);
-    return;
   }
 
   const visualCommandStart = String(
@@ -2153,9 +2236,12 @@ function renderFloatingCharacters() {
         ? `<img class="character-floating__avatar-image" src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(character.name || "Unnamed")}" />`
         : escapeHtml(getInitials(character.name));
       return `
-        <button class="character-floating__item ${activeClass} ${avatarClass}" type="button" data-action="switch-character" data-character-id="${character.id}" title="${escapeHtml(character.name || "Unnamed")}">
-          ${avatarHtml}
-        </button>
+        <div class="character-floating__entry">
+          <button class="character-floating__item ${activeClass} ${avatarClass}" type="button" data-action="switch-character" data-character-id="${escapeHtml(character.id)}" title="${escapeHtml(character.name || "Unnamed")}">
+            ${avatarHtml}
+          </button>
+          <button class="character-floating__presence ${character.presence ? "is-present" : "is-absent"}" type="button" data-action="toggle-presence-character" data-character-id="${escapeHtml(character.id)}" aria-pressed="${character.presence === true}" aria-label="Mark ${escapeHtml(character.name || "Unnamed")} as ${character.presence ? "absent" : "present"}" title="${character.presence ? "Present: click to mark absent" : "Absent: click to mark present"}"></button>
+        </div>
       `;
     })
     .join("");

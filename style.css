@@ -1197,6 +1197,39 @@
   background-color: transparent;
 }
 
+.character-floating__entry {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+.character-floating__presence {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--SmartThemeBodyColor);
+  border-radius: 999px;
+  box-shadow: 0 0 4px var(--black50a);
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+}
+
+.character-floating__presence.is-present {
+  background-color: #3fae5a;
+}
+
+.character-floating__presence.is-absent {
+  background-color: #d14b4b;
+}
+
+.character-floating__presence:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: 2px;
+}
+
 .character-floating__avatar-image {
   display: block;
   width: 100%;
@@ -1208,6 +1241,84 @@
 .character-floating__item.is-active {
   border-color: var(--active);
   color: var(--active);
+}
+
+.character-details__guide-characters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.character-details__guide-characters h3 {
+  margin: 8px 0 0;
+}
+
+.character-details__guide-character-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-gutter: stable;
+}
+
+.character-details__guide-character {
+  flex: 0 0 64px;
+  min-width: 64px;
+  border: 2px solid var(--SmartThemeBorderColor);
+  border-radius: 8px;
+  background: var(--SmartThemeBlurTintColor);
+  color: var(--SmartThemeBodyColor);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+}
+
+.character-details__guide-character.is-present {
+  border-color: #3fae5a;
+}
+
+.character-details__guide-character.is-absent {
+  border-color: #d14b4b;
+}
+
+.character-details__guide-character:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: 2px;
+}
+
+.character-details__guide-character-avatar,
+.character-details__guide-character-initials {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+}
+
+.character-details__guide-character-avatar {
+  display: block;
+  object-fit: cover;
+}
+
+.character-details__guide-character-initials {
+  align-items: center;
+  background: var(--SmartThemeChatTintColor);
+  display: inline-flex;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.character-details__guide-character-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-details__guide-character-empty {
+  color: var(--SmartThemeEmColor);
 }
 
 .character-manager {
