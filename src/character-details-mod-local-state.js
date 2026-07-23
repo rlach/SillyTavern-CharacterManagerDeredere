@@ -48,12 +48,18 @@ export function readModsLocalState(context) {
 
   for (const [modId, value] of Object.entries(parsed.selectedItemByGroupModId || {})) {
     const normalizedModId = String(modId || "").trim();
-    const normalizedItemId = String(value || "").trim();
-    if (!normalizedModId || !normalizedItemId) {
+    const normalizedItemIds = [...new Set((Array.isArray(value) ? value : [value])
+      .map((itemId) => String(itemId || "").trim())
+      .filter(Boolean))];
+    if (!normalizedModId) {
       continue;
     }
 
-    selectedItemByGroupModId[normalizedModId] = normalizedItemId;
+    if (!normalizedItemIds.length && !Array.isArray(value)) {
+      continue;
+    }
+
+    selectedItemByGroupModId[normalizedModId] = normalizedItemIds;
   }
 
   return {
@@ -133,10 +139,14 @@ export function cleanupModsLocalState(context, mods) {
       continue;
     }
 
-    const selectedItemId = String(localState.selectedItemByGroupModId[modId] || "").trim();
-    const exists = items.some((item) => String(item?.id || "").trim() === selectedItemId);
-    if (!selectedItemId || !exists) {
-      localState.selectedItemByGroupModId[modId] = firstItemId;
+    const selectedItemIds = (Array.isArray(localState.selectedItemByGroupModId[modId])
+      ? localState.selectedItemByGroupModId[modId]
+      : [localState.selectedItemByGroupModId[modId]])
+      .map((itemId) => String(itemId || "").trim())
+      .filter((itemId) => items.some((item) => String(item?.id || "").trim() === itemId));
+    const normalizedItemIds = mod.isMultiselect === true ? selectedItemIds : [selectedItemIds[0] || firstItemId];
+    if (JSON.stringify(localState.selectedItemByGroupModId[modId]) !== JSON.stringify(normalizedItemIds)) {
+      localState.selectedItemByGroupModId[modId] = normalizedItemIds;
       changed = true;
     }
   }
@@ -169,13 +179,16 @@ export function applyLocalModsState(mods, localState) {
     }
 
     if (isModGroup(effective) && Object.prototype.hasOwnProperty.call(stateValue.selectedItemByGroupModId, modId)) {
-      const selectedItemId = String(stateValue.selectedItemByGroupModId[modId] || "").trim();
-      const itemExists = Array.isArray(effective.items)
-        ? effective.items.some((item) => String(item?.id || "").trim() === selectedItemId)
-        : false;
-      if (selectedItemId && itemExists) {
-        effective.selectedItemId = selectedItemId;
-      }
+      const selectedItemIds = (Array.isArray(stateValue.selectedItemByGroupModId[modId])
+        ? stateValue.selectedItemByGroupModId[modId]
+        : [stateValue.selectedItemByGroupModId[modId]])
+        .map((itemId) => String(itemId || "").trim())
+        .filter((itemId) => Array.isArray(effective.items)
+          && effective.items.some((item) => String(item?.id || "").trim() === itemId));
+      effective.selectedItemIds = effective.isMultiselect === true
+        ? selectedItemIds
+        : [selectedItemIds[0] || effective.selectedItemId];
+      effective.selectedItemId = effective.selectedItemIds[0] || "";
     }
 
     return effective;
@@ -197,13 +210,13 @@ export function seedCurrentChatLocalStateFromMod(mods, mod, effectiveMod = null)
   localState.enabledByModId[modId] = sourceMod?.enabled === true;
 
   if (isModGroup(mod)) {
-    const selectedItemId = String(sourceMod?.selectedItemId || mod?.selectedItemId || "").trim();
-    const itemExists = Array.isArray(mod?.items)
-      ? mod.items.some((item) => String(item?.id || "").trim() === selectedItemId)
-      : false;
+    const selectedItemIds = (Array.isArray(sourceMod?.selectedItemIds) ? sourceMod.selectedItemIds : [sourceMod?.selectedItemId || mod?.selectedItemId])
+      .map((itemId) => String(itemId || "").trim())
+      .filter((itemId) => Array.isArray(mod?.items)
+        && mod.items.some((item) => String(item?.id || "").trim() === itemId));
 
-    if (selectedItemId && itemExists) {
-      localState.selectedItemByGroupModId[modId] = selectedItemId;
+    if (selectedItemIds.length) {
+      localState.selectedItemByGroupModId[modId] = mod.isMultiselect === true ? selectedItemIds : [selectedItemIds[0]];
     }
   }
 

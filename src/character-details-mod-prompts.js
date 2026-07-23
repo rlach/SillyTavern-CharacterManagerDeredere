@@ -186,12 +186,21 @@ export function normalizeGroupModEntry(mod, baseEntry) {
 
   const selectedItemId = String(mod?.selectedItemId || mod?.selectedModId || "").trim();
   const selectedExists = items.some((item) => item.id === selectedItemId);
+  const isMultiselect = mod?.isMultiselect === true;
+  const selectedItemIds = [...new Set((Array.isArray(mod?.selectedItemIds) ? mod.selectedItemIds : [selectedItemId])
+    .map((itemId) => String(itemId || "").trim())
+    .filter((itemId) => items.some((item) => item.id === itemId)))];
+  const normalizedSelectedItemIds = isMultiselect
+    ? selectedItemIds
+    : [selectedExists ? selectedItemId : items[0].id];
 
   return {
     ...baseEntry,
     type: MOD_ENTRY_TYPE_GROUP,
     groupName: deriveModGroupName(mod?.groupName || mod?.shortname),
-    selectedItemId: selectedExists ? selectedItemId : items[0].id,
+    isMultiselect,
+    selectedItemId: normalizedSelectedItemIds[0] || items[0].id,
+    selectedItemIds: normalizedSelectedItemIds,
     items,
   };
 }
@@ -201,36 +210,45 @@ export function isModGroup(mod) {
 }
 
 export function getSelectedModItem(mod) {
+  return getSelectedModItems(mod)[0] || null;
+}
+
+export function getSelectedModItems(mod) {
   if (!isModGroup(mod)) {
-    return null;
+    return [];
   }
 
   const items = Array.isArray(mod.items) ? mod.items : [];
   if (!items.length) {
-    return null;
+    return [];
+  }
+
+  if (mod.isMultiselect === true) {
+    const selectedIds = new Set(Array.isArray(mod.selectedItemIds) ? mod.selectedItemIds : []);
+    return items.filter((item) => selectedIds.has(item.id));
   }
 
   const selected = items.find((item) => item.id === mod.selectedItemId);
-  return selected || items[0];
+  return [selected || items[0]];
 }
 
 export function getModPromptContent(mod) {
-  if (isModGroup(mod)) {
-    const selectedItem = getSelectedModItem(mod);
-    const content = String(selectedItem?.fullContent || "").trim();
-    if (content) {
-      return content;
-    }
+  return getModPromptContents(mod)[0] || "";
+}
 
-    return String(selectedItem?.shortname || "").trim();
+export function getModPromptContents(mod) {
+  if (isModGroup(mod)) {
+    return getSelectedModItems(mod)
+      .map((selectedItem) => String(selectedItem?.fullContent || "").trim() || String(selectedItem?.shortname || "").trim())
+      .filter(Boolean);
   }
 
   const content = String(mod?.fullContent || "").trim();
   if (content) {
-    return content;
+    return [content];
   }
 
-  return String(mod?.shortname || "").trim();
+  return [String(mod?.shortname || "").trim()].filter(Boolean);
 }
 
 export function normalizeModEntry(mod) {
@@ -320,11 +338,6 @@ export function buildAfterCharModsByCharacterId(data, imageType, context = null)
       continue;
     }
 
-    const inlineSegment = normalizeInlineModSegment(getModPromptContent(mod));
-    if (!inlineSegment) {
-      continue;
-    }
-
     const key = String(targetCharacter.id || "").trim();
     if (!key) {
       continue;
@@ -334,7 +347,10 @@ export function buildAfterCharModsByCharacterId(data, imageType, context = null)
       result.set(key, []);
     }
 
-    result.get(key).push(inlineSegment);
+    const inlineSegments = getModPromptContents(mod)
+      .map((content) => normalizeInlineModSegment(content))
+      .filter(Boolean);
+    result.get(key).push(...inlineSegments);
   }
 
   return result;
@@ -360,7 +376,7 @@ export function buildModsPromptForPosition(position, imageType, context = null) 
     .filter((mod) => mod.enabled)
     .filter((mod) => mod.position === position)
     .filter((mod) => mod.imageTypes?.[imageType] !== false)
-    .map((mod) => getModPromptContent(mod))
+    .flatMap((mod) => getModPromptContents(mod))
     .map((modText) => normalizeInlineModSegment(modText))
     .map((modText) => ensureTrailingComma(modText))
     .filter(Boolean);
