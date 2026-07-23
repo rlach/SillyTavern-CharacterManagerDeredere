@@ -1,7 +1,8 @@
 import { getContext } from "../../../../extensions.js";
 import { extension_settings } from "../../../../extensions.js";
+import { isImageInliningSupported } from "../../../../openai.js";
 import { loadCharacterDetails, normalizeCharacterDetails } from "./character-details-store.js";
-import { setCharacterDetailsData } from "./character-details-panel.js";
+import { getCurrentChatCharacterAvatarSource, setCharacterDetailsData } from "./character-details-panel.js";
 import { showCharacterDetailsDiff } from "./character-details-diff-modal.js";
 import { buildCharacterVisualDescription } from "./character-details-descriptions.js";
 import { COMPACT_OUTFIT_ONLY_CHANGELOG_SHAPE, DEFAULT_DESCRIPTIONS_PROMPT } from "./character-details-prompts.js";
@@ -452,7 +453,16 @@ function buildSystemInstructionPrompt(basePrompt, extraInstruction = "") {
   return applyStrictJsonOutputRules(mergedPrompt);
 }
 
-function buildOutfitGenerationInstruction(character, userRequest) {
+function buildVisionReferenceInstruction(referenceImages) {
+  const count = Array.isArray(referenceImages) ? referenceImages.length : 0;
+  if (!count) {
+    return "";
+  }
+
+  return `- ${count === 1 ? "A reference image is" : `${count} reference images are`} attached to this request. Use ${count === 1 ? "it" : "them"} as the primary visual reference.`;
+}
+
+function buildOutfitGenerationInstruction(character, userRequest, referenceImages) {
   const characterId = normalizeShortId(character?.id);
   const characterName = sanitizeForbiddenText(character?.name || "Unnamed");
   const requestText = sanitizeForbiddenText(userRequest || "");
@@ -470,7 +480,8 @@ function buildOutfitGenerationInstruction(character, userRequest) {
     `- Expected single-line JSON shape example: ${COMPACT_OUTFIT_ONLY_CHANGELOG_SHAPE}`,
     "- Do not output unrelated updates in this mode (no character rename/presence/description changes).",
     "- If no valid outfit can be added create outfit `Naked` with single layer `Nude`",
-  ].join("\n");
+    buildVisionReferenceInstruction(referenceImages),
+  ].filter(Boolean).join("\n");
 }
 
 async function runCharacterDetailsGeneration(eventOrButton, options = {}) {
@@ -524,6 +535,9 @@ async function runCharacterDetailsGeneration(eventOrButton, options = {}) {
     include_reasoning: false,
     request_thoughts: false,
   };
+  const referenceImages = isImageInliningSupported() && Array.isArray(options?.referenceImages)
+    ? options.referenceImages.filter((image) => typeof image === "string" && image)
+    : [];
   const limitedPromptMessages = buildLimitedChatPrompt(context, clothingContextPrompt, finalPrompt);
 
   try {
@@ -534,7 +548,10 @@ async function runCharacterDetailsGeneration(eventOrButton, options = {}) {
     }
 
     if (context.generate) {
-      response = await generateWithChatStopSemantics(context, quietPrompt, generationOptions);
+      response = await generateWithChatStopSemantics(context, quietPrompt, {
+        ...generationOptions,
+        quietImage: referenceImages,
+      });
     } else {
       throw new Error("Generate API unavailable");
     }
@@ -1526,13 +1543,14 @@ function restoreGenerationButtonState(button) {
   button.removeClass("is-generating");
 }
 
-async function generateWithChatStopSemantics(context, promptText) {
+async function generateWithChatStopSemantics(context, promptText, options = {}) {
   if (typeof context?.generateQuietPrompt === "function") {
     return await context.generateQuietPrompt({
       quietPrompt: promptText,
       quietToLoud: false,
       removeReasoning: false,
       trimToSentence: false,
+      quietImage: options.quietImage,
     });
   }
 
@@ -1545,6 +1563,7 @@ async function generateWithChatStopSemantics(context, promptText) {
     force_name2: true,
     quiet_prompt: promptText,
     quietToLoud: false,
+    quietImage: options.quietImage,
   });
 
   if (sendTextarea.length) {
@@ -1557,13 +1576,22 @@ async function generateWithChatStopSemantics(context, promptText) {
 }
 
 async function runDescriptionsGeneration(eventOrButton) {
+  const context = getContext();
+  const portrait = isImageInliningSupported()
+    ? getCurrentChatCharacterAvatarSource(context)
+    : "";
+
   await runCharacterDetailsGeneration(eventOrButton, {
     generatingMessage: "Generating descriptions...",
     successMessage: "Character details updated.",
+    referenceImages: portrait ? [portrait] : [],
+    extraInstruction: portrait
+      ? "- The currently chatted character's portrait is attached. Use it as a visual reference when generating character descriptions."
+      : "",
   });
 }
 
-async function runOutfitGenerationForCharacter(characterId, userRequest, eventOrButton) {
+async function runOutfitGenerationForCharacter(characterId, userRequest, eventOrButton, referenceImages = []) {
   const context = getContext();
   const data = loadCharacterDetails(context);
   const targetCharacter = (Array.isArray(data?.characters) ? data.characters : [])
@@ -1580,15 +1608,19 @@ async function runOutfitGenerationForCharacter(characterId, userRequest, eventOr
     return;
   }
 
-  const extraInstruction = buildOutfitGenerationInstruction(targetCharacter, requestText);
+  const visionReferences = isImageInliningSupported()
+    ? referenceImages.filter((image) => typeof image === "string" && image)
+    : [];
+  const extraInstruction = buildOutfitGenerationInstruction(targetCharacter, requestText, visionReferences);
   await runCharacterDetailsGeneration(eventOrButton, {
     extraInstruction,
     generatingMessage: "Generating outfit...",
     successMessage: "Outfit changelog generated.",
+    referenceImages: visionReferences,
   });
 }
 
-function buildCharacterGenerationInstruction(userRequest) {
+function buildCharacterGenerationInstruction(userRequest, referenceImages) {
   const requestText = sanitizeForbiddenText(userRequest || "");
 
   return [
@@ -1604,21 +1636,26 @@ function buildCharacterGenerationInstruction(userRequest) {
     "- The character should start with presence set to true.",
     "- Keep strict logical layering and visibility semantics from the main prompt.",
     "- Do not output unrelated updates in this mode (no changes to existing characters).",
-  ].join("\n");
+    buildVisionReferenceInstruction(referenceImages),
+  ].filter(Boolean).join("\n");
 }
 
-async function runCharacterGenerationWithAI(userRequest, eventOrButton) {
+async function runCharacterGenerationWithAI(userRequest, eventOrButton, referenceImages = []) {
   const requestText = String(userRequest || "").trim();
   if (!requestText) {
     toastr.warning("Provide character request first.", "Character Details");
     return;
   }
 
-  const extraInstruction = buildCharacterGenerationInstruction(requestText);
+  const visionReferences = isImageInliningSupported()
+    ? referenceImages.filter((image) => typeof image === "string" && image)
+    : [];
+  const extraInstruction = buildCharacterGenerationInstruction(requestText, visionReferences);
   await runCharacterDetailsGeneration(eventOrButton, {
     extraInstruction,
     generatingMessage: "Generating character...",
     successMessage: "Character changelog generated.",
+    referenceImages: visionReferences,
   });
 }
 

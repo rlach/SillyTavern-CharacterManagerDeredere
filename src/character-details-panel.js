@@ -9,6 +9,7 @@ import {
   POPUP_RESULT,
   Popup,
 } from "../../../../popup.js";
+import { isImageInliningSupported } from "../../../../openai.js";
 import {
   saveSettingsDebounced,
   user_avatar as globalUserAvatar,
@@ -1987,6 +1988,10 @@ function getChatCharacterAvatarSource(context) {
   return getAvatarSourceFromContextCharacter(match, context);
 }
 
+function getCurrentChatCharacterAvatarSource(context = getContext()) {
+  return getChatCharacterAvatarSource(context);
+}
+
 function getActivePersonaAvatarSource(context) {
   const personaAvatar = String(
     context?.user_avatar || globalUserAvatar || "",
@@ -3281,6 +3286,119 @@ function readFileAsDataUrl(file) {
   });
 }
 
+async function showAiGenerationRequestPopup(title, description) {
+  const visionSupported = isImageInliningSupported();
+  const selectedReferenceImages = [];
+  const content = $(
+    `<div class="character-details__generation-request">
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(description)}</p>
+      <label class="text_label" for="character-details-generation-request">Request</label>
+      <textarea id="character-details-generation-request" class="text_pole" rows="2"></textarea>
+      ${visionSupported ? `
+        <label class="text_label" for="character-details-generation-images">
+          Reference images
+          <small>Sent to the model as visual references.</small>
+        </label>
+        <input id="character-details-generation-images" type="file" accept="image/*" multiple />
+        <div id="character-details-generation-image-preview" class="character-details__generation-image-preview" aria-live="polite"></div>
+      ` : ""}
+    </div>`,
+  );
+  let result = null;
+
+  const renderReferenceImagePreviews = () => {
+    const preview = content.find("#character-details-generation-image-preview");
+    preview.empty();
+
+    if (!selectedReferenceImages.length) {
+      return;
+    }
+
+    for (const [index, reference] of selectedReferenceImages.entries()) {
+      const item = $("<div>", { class: "character-details__generation-image-item" });
+      const image = $("<img>", {
+        src: reference.url,
+        alt: reference.file.name,
+        title: reference.file.name,
+      });
+      const filename = $("<small>").text(reference.file.name);
+      const remove = $("<button>", {
+        class: "menu_button",
+        type: "button",
+        title: `Remove ${reference.file.name}`,
+        text: "Remove",
+      });
+
+      remove.on("click", () => {
+        URL.revokeObjectURL(reference.url);
+        selectedReferenceImages.splice(index, 1);
+        renderReferenceImagePreviews();
+      });
+
+      item.append(image, filename, remove);
+      preview.append(item);
+    }
+  };
+
+  content.find("#character-details-generation-images").on("change", function () {
+    const files = Array.from(this.files || []);
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        toastr.warning(`"${file.name}" is not a supported image.`, "Character Details");
+        continue;
+      }
+
+      selectedReferenceImages.push({ file, url: URL.createObjectURL(file) });
+    }
+
+    this.value = "";
+    renderReferenceImagePreviews();
+  });
+
+  const popup = new Popup(content, POPUP_TYPE.TEXT, "", {
+    okButton: "Generate",
+    cancelButton: "Cancel",
+    wider: true,
+    onClosing: async (currentPopup) => {
+      if (currentPopup.result !== POPUP_RESULT.AFFIRMATIVE) {
+        return true;
+      }
+
+      const request = String(content.find("#character-details-generation-request").val() || "").trim();
+      if (!request) {
+        toastr.warning("Request cannot be empty.", "Character Details");
+        return false;
+      }
+
+      try {
+        const referenceImages = await Promise.all(selectedReferenceImages.map(async ({ file }) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          if (!dataUrl.startsWith("data:image/")) {
+            throw new Error(`"${file.name}" is not a supported image.`);
+          }
+
+          return dataUrl;
+        }));
+
+        result = { request, referenceImages };
+        return true;
+      } catch (error) {
+        toastr.error(error?.message || "Failed to read reference images.", "Character Details");
+        return false;
+      }
+    },
+    onClose: () => {
+      for (const reference of selectedReferenceImages) {
+        URL.revokeObjectURL(reference.url);
+      }
+    },
+  });
+
+  const popupResult = await popup.show();
+  return popupResult === POPUP_RESULT.AFFIRMATIVE ? result : null;
+}
+
 async function pickAvatarFile() {
   return await new Promise((resolve) => {
     const input = document.createElement("input");
@@ -4070,27 +4188,20 @@ async function handlePanelClick(event) {
 
   if (resolvedAction === "generate-character-ai") {
     void (async () => {
-      const request = await Popup.show.input(
+      const generationRequest = await showAiGenerationRequestPopup(
         "Generate character with AI",
         "Describe what character should be added to the scene (for example: a mysterious stranger in a dark cloak).",
-        "",
-        { okButton: "Generate", cancelButton: "Cancel", rows: 2 },
       );
 
-      if (request === null) {
+      if (!generationRequest) {
         return;
       }
 
-      const requestText = String(request || "").trim();
-      if (!requestText) {
-        toastr.warning(
-          "Character request cannot be empty.",
-          "Character Details",
-        );
-        return;
-      }
-
-      await runCharacterGenerationWithAI(requestText, $(actionOwner));
+      await runCharacterGenerationWithAI(
+        generationRequest.request,
+        $(actionOwner),
+        generationRequest.referenceImages,
+      );
     })();
     return;
   }
@@ -4223,27 +4334,20 @@ async function handlePanelClick(event) {
 
   if (resolvedAction === "generate-outfit-ai") {
     void (async () => {
-      const request = await Popup.show.input(
+      const generationRequest = await showAiGenerationRequestPopup(
         "Generate outfit with AI",
         "Describe what outfit should be generated for this character (for example: Nice outfit for a date).",
-        "",
-        { okButton: "Generate", cancelButton: "Cancel", rows: 2 },
       );
 
-      if (request === null) {
-        return;
-      }
-
-      const requestText = String(request || "").trim();
-      if (!requestText) {
-        toastr.warning("Outfit request cannot be empty.", "Character Details");
+      if (!generationRequest) {
         return;
       }
 
       await runOutfitGenerationForCharacter(
         character.id,
-        requestText,
+        generationRequest.request,
         $(actionOwner),
+        generationRequest.referenceImages,
       );
     })();
     return;
@@ -4849,4 +4953,5 @@ export {
   initCharacterDetailsPanel,
   setCharacterDetailsData,
   getCharacterDetailsState,
+  getCurrentChatCharacterAvatarSource,
 };
