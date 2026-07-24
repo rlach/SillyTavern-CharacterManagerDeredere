@@ -548,9 +548,12 @@ async function runCharacterDetailsGeneration(eventOrButton, options = {}) {
     }
 
     if (context.generate) {
+      const quietImageOptions = referenceImages.length
+        ? { quietImage: referenceImages }
+        : {};
       response = await generateWithChatStopSemantics(context, quietPrompt, {
         ...generationOptions,
-        quietImage: referenceImages,
+        ...quietImageOptions,
       });
     } else {
       throw new Error("Generate API unavailable");
@@ -1544,27 +1547,39 @@ function restoreGenerationButtonState(button) {
 }
 
 async function generateWithChatStopSemantics(context, promptText, options = {}) {
+  const quietImage = Array.isArray(options.quietImage) && options.quietImage.length
+    ? options.quietImage
+    : null;
+
   if (typeof context?.generateQuietPrompt === "function") {
-    return await context.generateQuietPrompt({
+    const quietPromptOptions = {
       quietPrompt: promptText,
       quietToLoud: false,
       removeReasoning: false,
       trimToSentence: false,
-      quietImage: options.quietImage,
-    });
+    };
+    if (quietImage) {
+      quietPromptOptions.quietImage = quietImage;
+    }
+
+    return await context.generateQuietPrompt(quietPromptOptions);
   }
 
   // Legacy fallback for older ST builds without generateQuietPrompt in context.
   const sendTextarea = $("#send_textarea");
   const previousInputValue = sendTextarea.length ? String(sendTextarea.val() || "") : "";
 
-  const response = await context.generate("impersonate", {
+  const generationOptions = {
     automatic_trigger: true,
     force_name2: true,
     quiet_prompt: promptText,
     quietToLoud: false,
-    quietImage: options.quietImage,
-  });
+  };
+  if (quietImage) {
+    generationOptions.quietImage = quietImage;
+  }
+
+  const response = await context.generate("impersonate", generationOptions);
 
   if (sendTextarea.length) {
     sendTextarea.val(previousInputValue);
