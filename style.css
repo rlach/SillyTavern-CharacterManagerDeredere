@@ -294,8 +294,7 @@
     padding-top: 0;
     padding-bottom: 0;
     flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: visible;
   }
 
   /* In compact mobile mode, anchor floating switcher to layout (footer block), not to zero-height main. */
@@ -460,6 +459,30 @@
   padding: 10px 12px;
   border-top: 1px solid var(--SmartThemeBorderColor);
   background-color: var(--SmartThemeBlurTintColor);
+}
+
+.st-extension-right-panel__footer > :not(.character-details-footer__styles) {
+  flex-shrink: 0;
+}
+
+.character-details-footer__styles {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 32px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.character-details-footer__more-wrap {
+  flex: 0 0 auto;
+}
+
+.character-details-footer__more-menu {
+  left: auto;
+  right: 0;
+  min-width: 190px;
+  max-width: min(320px, calc(100vw - 24px));
 }
 
 .st-extension-left-panel__footer {
@@ -978,7 +1001,7 @@
 }
 
 .character-details-footer__quick-resolution-wrap {
-  margin-right: auto;
+  margin-right: 0;
 }
 
 .character-details-footer__quick-resolution-menu {
@@ -2171,6 +2194,47 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.generation-style-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.generation-style-settings__selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.generation-style-settings__selector-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.generation-style-settings__selector-row button,
+.generation-style-settings__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.generation-style-settings__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--SmartThemeBorderColor);
+  border-radius: 8px;
+  background-color: var(--SmartThemeBlurTintColor);
+}
+
+.generation-style-settings__delete {
+  align-self: flex-start;
+  color: var(--warning);
 }
 
 .custom-settings-note {

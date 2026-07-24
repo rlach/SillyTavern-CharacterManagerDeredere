@@ -36,6 +36,11 @@ import {
   IMAGE_RESOLUTION_OPTIONS,
   DEFAULT_RESOLUTION_OPTION,
 } from "./image-resolution-options.js";
+import {
+  normalizeGenerationStyleIcon,
+  normalizeGenerationStyles,
+  sortGenerationStylesForQuickMenu,
+} from "./generation-styles.js";
 import { showCharacterDetailsDiff } from "./character-details-diff-modal.js";
 import { applyBackgroundFromImage } from "./background-manager.js";
 import {
@@ -55,16 +60,12 @@ let state = null;
 let panelRoot = null;
 let footerGenerateButton = null;
 let footerFreeGenerateButton = null;
-let footerPortraitButton = null;
-let footerFullBodyButton = null;
 let footerPreviewToggle = null;
 let footerGuideToggle = null;
 let footerQuickResolutionWrap = null;
 let footerQuickResolutionButton = null;
 let footerQuickResolutionMenu = null;
-let footerBackgroundButton = null;
-let footerViewerEyesButton = null;
-let footerSceneButton = null;
+let footerGenerationStylesRoot = null;
 let footerRoot = null;
 let floatingRoot = null;
 let managerRoot = null;
@@ -75,6 +76,8 @@ let rightCompactRestoreButton = null;
 let customFieldRefreshTimer = null;
 let draggedLayerId = null;
 let quickResolutionMenuOpen = false;
+let generationStylesMoreMenuOpen = false;
+let generationStylesResizeObserver = null;
 let managerExpanded = false;
 let mobileDrawerOpen = false;
 let rightDrawerCompact = false;
@@ -615,28 +618,24 @@ async function maybeCropAvatarDataUrl(dataUrl, characterName = "") {
   return String(croppedImage);
 }
 
-function getResolutionSettingKeyForMode(mode) {
-  const map = {
-    portrait: "portrait",
-    fullbody: "fullbody",
-    background: "background",
-    "viewer-eyes": "viewer_eyes",
-    scene: "scene",
-  };
-
-  return map[mode] || null;
+function getGenerationStyles() {
+  const settings = extension_settings?.[extensionName] || {};
+  settings.generation_styles = normalizeGenerationStyles(
+    settings.generation_styles,
+    settings,
+  );
+  return settings.generation_styles;
 }
 
-function getCustomResolutionForMode(mode) {
-  const key = getResolutionSettingKeyForMode(mode);
-  if (!key) {
-    return null;
-  }
-
-  const selected = String(
-    extension_settings?.[extensionName]?.custom_resolutions?.[key] ||
-      DEFAULT_RESOLUTION_OPTION,
+function getGenerationStyle(styleId) {
+  return (
+    getGenerationStyles().find((style) => style.id === String(styleId || "")) ||
+    null
   );
+}
+
+function getCustomResolutionForStyle(style) {
+  const selected = String(style?.resolution || DEFAULT_RESOLUTION_OPTION);
   if (selected === DEFAULT_RESOLUTION_OPTION) {
     return null;
   }
@@ -653,8 +652,8 @@ function getCustomResolutionForMode(mode) {
   return { width: preset.width, height: preset.height };
 }
 
-function getEffectiveResolutionForMode(mode) {
-  return getQuickResolutionOverride() || getCustomResolutionForMode(mode);
+function getEffectiveResolutionForStyle(style) {
+  return getQuickResolutionOverride() || getCustomResolutionForStyle(style);
 }
 
 function getPresentCharacters(data, options = {}) {
@@ -783,6 +782,7 @@ function restoreGenerationButtonState(button) {
 function clearActiveImageGeneration(button) {
   restoreGenerationButtonState(button);
   activeImageGeneration = null;
+  requestAnimationFrame(layoutGenerationStyleButtons);
 }
 
 function compactPromptToSingleLine(text) {
@@ -1387,9 +1387,20 @@ async function askGuideForPrompt(data, context = getContext()) {
   };
 }
 
-async function generateCharacterImage(mode, triggerButton = null) {
+async function generateCharacterImage(styleOrId, triggerButton = null) {
   const context = getContext();
   const button = triggerButton?.length ? triggerButton : null;
+  const style =
+    styleOrId && typeof styleOrId === "object"
+      ? getGenerationStyle(styleOrId.id)
+      : getGenerationStyle(styleOrId);
+
+  if (!style) {
+    toastr.warning("Generation style is unavailable.", "Character Details");
+    return;
+  }
+
+  const mode = style.mode || "scene";
 
   if (activeImageGeneration?.running) {
     const isSameButton = Boolean(
@@ -1415,6 +1426,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
     cancelRequested: false,
     stopSignaled: false,
     button,
+    styleId: style.id,
   };
 
   if (button) {
@@ -1479,11 +1491,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
       return;
     }
 
-    scenePrompt = String(
-      mode === "portrait"
-        ? extension_settings?.[extensionName]?.closeup_portrait_prompt
-        : extension_settings?.[extensionName]?.full_body_portrait_prompt,
-    ).trim();
+    scenePrompt = String(style.prompt || "").trim();
     modeLine =
       mode === "portrait"
         ? "You are writing a CLOSE-UP PORTRAIT prompt (head and upper torso only)."
@@ -1491,9 +1499,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
   }
 
   if (mode === "background") {
-    scenePrompt = String(
-      extension_settings?.[extensionName]?.describe_background_prompt || "",
-    ).trim();
+    scenePrompt = String(style.prompt || "").trim();
     modeLine = "You are writing a BACKGROUND prompt for image generation.";
   }
 
@@ -1515,9 +1521,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
         extraByCharacterId: afterCharModsByCharacterId,
       },
     );
-    scenePrompt = String(
-      extension_settings?.[extensionName]?.describe_viewer_eyes_prompt || "",
-    ).trim();
+    scenePrompt = String(style.prompt || "").trim();
     modeLine = `Viewpoint is from viewer's eyes. Viewer name is ${viewerCharacter.name || "viewer"}, but always call this person \"viewer\".`;
   }
 
@@ -1531,10 +1535,10 @@ async function generateCharacterImage(mode, triggerButton = null) {
         extraByCharacterId: afterCharModsByCharacterId,
       },
     );
-    scenePrompt = String(
-      extension_settings?.[extensionName]?.describe_current_scene_prompt || "",
-    ).trim();
-    modeLine = "You are writing a CURRENT SCENE prompt for image generation.";
+    scenePrompt = String(style.prompt || "").trim();
+    modeLine = style.builtin
+      ? "You are writing a CURRENT SCENE prompt for image generation."
+      : `You are writing a ${String(style.name || "custom").toUpperCase()} prompt for image generation.`;
   }
 
   const visualCommandStart = String(
@@ -1667,7 +1671,7 @@ async function generateCharacterImage(mode, triggerButton = null) {
       throw new Error("Empty image trigger");
     }
 
-    const customResolution = getEffectiveResolutionForMode(mode);
+    const customResolution = getEffectiveResolutionForStyle(style);
     const sdCommand = customResolution
       ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerForGenerator}`
       : `/sd ${finalTriggerForGenerator}`;
@@ -1777,7 +1781,9 @@ async function generateFreeImage() {
     return;
   }
 
-  const customResolution = getEffectiveResolutionForMode("scene");
+  const customResolution = getEffectiveResolutionForStyle(
+    getGenerationStyle("scene"),
+  );
   const sdCommand = customResolution
     ? `/sd width=${customResolution.width} height=${customResolution.height} ${finalTriggerForGenerator}`
     : `/sd ${finalTriggerForGenerator}`;
@@ -1911,6 +1917,124 @@ function toggleQuickResolutionMenu() {
   renderQuickResolutionMenu();
 }
 
+function buildGenerationStyleButtonMarkup(style, index) {
+  const name = String(style?.name || "Generation style");
+  const icon = normalizeGenerationStyleIcon(style?.icon);
+  return `
+    <button
+      class="menu_button character-details-footer__icon-button character-details-footer__style-button"
+      type="button"
+      data-action="generate-image-style"
+      data-style-id="${escapeHtml(style.id)}"
+      data-style-index="${index}"
+      title="Generate: ${escapeHtml(name)}"
+    >
+      <i class="fa-solid ${icon}"></i>
+    </button>
+  `;
+}
+
+function layoutGenerationStyleButtons() {
+  if (!footerGenerationStylesRoot?.length) {
+    return;
+  }
+
+  const buttons = footerGenerationStylesRoot.children(
+    ".character-details-footer__style-button",
+  );
+  const moreWrap = footerGenerationStylesRoot.children(
+    ".character-details-footer__more-wrap",
+  );
+  const menuOptions = moreWrap.find("[data-style-index]");
+  buttons.removeClass("displayNone");
+  menuOptions.addClass("displayNone");
+  moreWrap.addClass("displayNone");
+
+  if (!buttons.length || footerGenerationStylesRoot.hasClass("displayNone")) {
+    generationStylesMoreMenuOpen = false;
+    return;
+  }
+
+  const availableWidth = footerGenerationStylesRoot.innerWidth();
+  const buttonWidth = buttons.first().outerWidth() || 32;
+  const gap = 8;
+  const allButtonsWidth =
+    buttons.length * buttonWidth + Math.max(0, buttons.length - 1) * gap;
+  const moreButtonIsActive = Boolean(
+    activeImageGeneration?.running &&
+    activeImageGeneration.button?.is(
+      moreWrap.find("[data-action='toggle-generation-styles-more']"),
+    ),
+  );
+  if (allButtonsWidth <= availableWidth + 1 && !moreButtonIsActive) {
+    generationStylesMoreMenuOpen = false;
+    return;
+  }
+
+  const capacity = Math.max(
+    1,
+    Math.floor((availableWidth + gap) / (buttonWidth + gap)),
+  );
+  const directCount = Math.min(buttons.length, Math.max(0, capacity - 1));
+  buttons.each((index, element) => {
+    $(element).toggleClass("displayNone", index >= directCount);
+  });
+  menuOptions.each((index, element) => {
+    $(element).toggleClass("displayNone", index < directCount);
+  });
+  moreWrap.removeClass("displayNone");
+  moreWrap
+    .find(".character-details-footer__more-menu")
+    .toggleClass("is-open", generationStylesMoreMenuOpen);
+}
+
+function renderGenerationStyleButtons() {
+  if (!footerGenerationStylesRoot?.length) {
+    return;
+  }
+
+  const styles = sortGenerationStylesForQuickMenu(getGenerationStyles());
+  generationStylesMoreMenuOpen = false;
+  const directButtons = styles
+    .map((style, index) => buildGenerationStyleButtonMarkup(style, index))
+    .join("");
+  const menuOptions = styles
+    .map(
+      (style, index) => `
+        <button
+          class="mod-item__position-option"
+          type="button"
+          data-action="generate-image-style"
+          data-style-id="${escapeHtml(style.id)}"
+          data-style-index="${index}"
+          title="Generate: ${escapeHtml(style.name)}"
+        >
+          <i class="fa-solid ${normalizeGenerationStyleIcon(style.icon)}"></i>
+          <span>${escapeHtml(style.name)}</span>
+        </button>
+      `,
+    )
+    .join("");
+
+  footerGenerationStylesRoot.html(`
+    ${directButtons}
+    <div class="mod-item__position-wrap character-details-footer__more-wrap displayNone">
+      <button
+        class="menu_button character-details-footer__icon-button"
+        type="button"
+        data-action="toggle-generation-styles-more"
+        title="More generation styles"
+      >
+        <i class="fa-solid fa-ellipsis"></i>
+      </button>
+      <div class="mod-item__position-popup opens-upward character-details-footer__more-menu">
+        ${menuOptions}
+      </div>
+    </div>
+  `);
+  requestAnimationFrame(layoutGenerationStyleButtons);
+}
+
 function updateFooterImageButtonsVisibility() {
   const show = shouldShowImageGenerationButtons();
   if (footerPreviewToggle?.length) {
@@ -1928,20 +2052,11 @@ function updateFooterImageButtonsVisibility() {
   if (footerFreeGenerateButton?.length) {
     footerFreeGenerateButton.toggleClass("displayNone", !show);
   }
-  if (footerPortraitButton?.length) {
-    footerPortraitButton.toggleClass("displayNone", !show);
-  }
-  if (footerFullBodyButton?.length) {
-    footerFullBodyButton.toggleClass("displayNone", !show);
-  }
-  if (footerBackgroundButton?.length) {
-    footerBackgroundButton.toggleClass("displayNone", !show);
-  }
-  if (footerViewerEyesButton?.length) {
-    footerViewerEyesButton.toggleClass("displayNone", !show);
-  }
-  if (footerSceneButton?.length) {
-    footerSceneButton.toggleClass("displayNone", !show);
+  if (footerGenerationStylesRoot?.length) {
+    footerGenerationStylesRoot.toggleClass("displayNone", !show);
+    if (show) {
+      layoutGenerationStyleButtons();
+    }
   }
   renderQuickResolutionState();
 }
@@ -4859,20 +4974,35 @@ function bindEvents() {
     renderQuickResolutionState();
   });
   footerFreeGenerateButton.on("click", generateFreeImage);
-  footerPortraitButton.on("click", (event) =>
-    generateCharacterImage("portrait", $(event.currentTarget)),
-  );
-  footerFullBodyButton.on("click", (event) =>
-    generateCharacterImage("fullbody", $(event.currentTarget)),
-  );
-  footerBackgroundButton.on("click", (event) =>
-    generateCharacterImage("background", $(event.currentTarget)),
-  );
-  footerViewerEyesButton.on("click", (event) =>
-    generateCharacterImage("viewer-eyes", $(event.currentTarget)),
-  );
-  footerSceneButton.on("click", (event) =>
-    generateCharacterImage("scene", $(event.currentTarget)),
+  footerRoot.on("click", "[data-action='generate-image-style']", (event) => {
+    const styleId = String($(event.currentTarget).data("styleId") || "");
+    const overflowButton = $(event.currentTarget).closest(
+      ".character-details-footer__more-menu",
+    ).length
+      ? footerGenerationStylesRoot.find(
+          "[data-action='toggle-generation-styles-more']",
+        )
+      : $(event.currentTarget);
+    generationStylesMoreMenuOpen = false;
+    layoutGenerationStyleButtons();
+    generateCharacterImage(styleId, overflowButton);
+  });
+  footerRoot.on(
+    "click",
+    "[data-action='toggle-generation-styles-more']",
+    (event) => {
+      const button = $(event.currentTarget);
+      if (
+        activeImageGeneration?.running &&
+        activeImageGeneration.button?.is(button)
+      ) {
+        generateCharacterImage(activeImageGeneration.styleId, button);
+        return;
+      }
+
+      generationStylesMoreMenuOpen = !generationStylesMoreMenuOpen;
+      layoutGenerationStyleButtons();
+    },
   );
   panelRoot.on("input", handlePanelInput);
   panelRoot.on("click", handlePanelClick);
@@ -4902,25 +5032,27 @@ function bindDocumentEvents() {
   $(document)
     .off("click.stExtensionQuickResolution")
     .on("click.stExtensionQuickResolution", (event) => {
-      if (!quickResolutionMenuOpen) {
-        return;
+      const insideQuickResolution = event.target?.closest?.(
+        ".character-details-footer__quick-resolution-wrap",
+      );
+      if (quickResolutionMenuOpen && !insideQuickResolution) {
+        quickResolutionMenuOpen = false;
+        renderQuickResolutionMenu();
       }
 
-      if (
-        event.target?.closest?.(
-          ".character-details-footer__quick-resolution-wrap",
-        )
-      ) {
-        return;
+      const insideGenerationStyles = event.target?.closest?.(
+        ".character-details-footer__styles",
+      );
+      if (generationStylesMoreMenuOpen && !insideGenerationStyles) {
+        generationStylesMoreMenuOpen = false;
+        layoutGenerationStyleButtons();
       }
-
-      quickResolutionMenuOpen = false;
-      renderQuickResolutionMenu();
     });
   $(document)
     .off(IMAGE_SETTINGS_CHANGED_EVENT)
     .on(IMAGE_SETTINGS_CHANGED_EVENT, () => {
       renderQuickResolutionState();
+      renderGenerationStyleButtons();
       updateFooterImageButtonsVisibility();
     });
 }
@@ -4936,16 +5068,12 @@ function initCharacterDetailsPanel() {
   rightCompactRestoreButton = $("#st-extension-right-compact-restore");
   footerGenerateButton = $("#character-details-generate");
   footerFreeGenerateButton = $("#character-details-free-generate");
-  footerPortraitButton = $("#character-details-portrait");
-  footerFullBodyButton = $("#character-details-fullbody");
   footerPreviewToggle = $("#character-details-preview-prompts");
   footerGuideToggle = $("#character-details-add-guide");
   footerQuickResolutionWrap = $("#character-details-quick-resolution-wrap");
   footerQuickResolutionButton = $("#character-details-quick-resolution");
   footerQuickResolutionMenu = $("#character-details-quick-resolution-menu");
-  footerBackgroundButton = $("#character-details-background");
-  footerViewerEyesButton = $("#character-details-viewer-eyes");
-  footerSceneButton = $("#character-details-scene");
+  footerGenerationStylesRoot = $("#character-details-generation-styles");
   footerRoot = $(".st-extension-right-panel__footer");
 
   if (!panelRoot.length) {
@@ -4968,6 +5096,7 @@ function initCharacterDetailsPanel() {
     renderPreviewToggleState();
     renderGuideToggleState();
     renderQuickResolutionState();
+    renderGenerationStyleButtons();
     updateFooterImageButtonsVisibility();
     renderPanel();
 
@@ -4992,6 +5121,16 @@ function initCharacterDetailsPanel() {
   bindEvents();
   bindDocumentEvents();
   initializeMobileDrawer();
+  generationStylesResizeObserver?.disconnect();
+  if (
+    typeof ResizeObserver === "function" &&
+    footerGenerationStylesRoot.length
+  ) {
+    generationStylesResizeObserver = new ResizeObserver(
+      layoutGenerationStyleButtons,
+    );
+    generationStylesResizeObserver.observe(footerGenerationStylesRoot[0]);
+  }
 
   // Initialize message action buttons (set avatar, set background from chat)
   setActionButtonsDependencies({

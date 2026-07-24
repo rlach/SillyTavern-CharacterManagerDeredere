@@ -153,140 +153,25 @@
             rows="8"
           ></textarea>
         </div>
-        <div class="flex-container flexFlowColumn">
-          <div class="title_restorable">
-            <span>Closeup portrait prompt</span>
-            <button
-              id="reset-closeup-portrait-prompt"
-              class="menu_button"
-              type="button"
-              title="Reset prompt to default"
-            >
-              <i class="fa-solid fa-rotate-left"></i>
+        <div class="generation-style-settings">
+          <div class="generation-style-settings__selector-row">
+            <select
+              id="generation-style-select"
+              class="text_pole"
+              aria-label="Generation style"
+            ></select>
+            <button id="generation-style-add" class="menu_button" type="button">
+              <i class="fa-solid fa-plus"></i><span>Add style</span>
             </button>
           </div>
-          <textarea
-            id="closeup_portrait_prompt"
-            class="text_pole"
-            rows="6"
-          ></textarea>
-        </div>
-        <div class="flex-container flexFlowColumn">
-          <div class="title_restorable">
-            <span>Full body portrait prompt</span>
-            <button
-              id="reset-full-body-portrait-prompt"
-              class="menu_button"
-              type="button"
-              title="Reset prompt to default"
-            >
-              <i class="fa-solid fa-rotate-left"></i>
-            </button>
-          </div>
-          <textarea
-            id="full_body_portrait_prompt"
-            class="text_pole"
-            rows="6"
-          ></textarea>
-        </div>
-        <div class="flex-container flexFlowColumn">
-          <div class="title_restorable">
-            <span>Describe background prompt</span>
-            <button
-              id="reset-describe-background-prompt"
-              class="menu_button"
-              type="button"
-              title="Reset prompt to default"
-            >
-              <i class="fa-solid fa-rotate-left"></i>
-            </button>
-          </div>
-          <textarea
-            id="describe_background_prompt"
-            class="text_pole"
-            rows="7"
-          ></textarea>
-        </div>
-        <div class="flex-container flexFlowColumn">
-          <div class="title_restorable">
-            <span>Describe view from viewer's eyes prompt</span>
-            <button
-              id="reset-describe-viewer-eyes-prompt"
-              class="menu_button"
-              type="button"
-              title="Reset prompt to default"
-            >
-              <i class="fa-solid fa-rotate-left"></i>
-            </button>
-          </div>
-          <textarea
-            id="describe_viewer_eyes_prompt"
-            class="text_pole"
-            rows="10"
-          ></textarea>
-        </div>
-        <div class="flex-container flexFlowColumn">
-          <div class="title_restorable">
-            <span>Describe current scene prompt</span>
-            <button
-              id="reset-describe-current-scene-prompt"
-              class="menu_button"
-              type="button"
-              title="Reset prompt to default"
-            >
-              <i class="fa-solid fa-rotate-left"></i>
-            </button>
-          </div>
-          <textarea
-            id="describe_current_scene_prompt"
-            class="text_pole"
-            rows="9"
-          ></textarea>
+          <div
+            id="generation-style-panel"
+            class="generation-style-settings__panel"
+          ></div>
         </div>
 
         <div class="custom-fields-settings">
-          <div class="custom-fields-settings__title">Custom resolutions</div>
-          <label
-            for="custom-resolution-portrait"
-            class="flex-container flexFlowColumn"
-          >
-            <span>Portrait</span>
-            <select id="custom-resolution-portrait" class="text_pole"></select>
-          </label>
-          <label
-            for="custom-resolution-fullbody"
-            class="flex-container flexFlowColumn"
-          >
-            <span>Full body</span>
-            <select id="custom-resolution-fullbody" class="text_pole"></select>
-          </label>
-          <label
-            for="custom-resolution-background"
-            class="flex-container flexFlowColumn"
-          >
-            <span>Background</span>
-            <select
-              id="custom-resolution-background"
-              class="text_pole"
-            ></select>
-          </label>
-          <label
-            for="custom-resolution-viewer-eyes"
-            class="flex-container flexFlowColumn"
-          >
-            <span>View from viewer's eyes</span>
-            <select
-              id="custom-resolution-viewer-eyes"
-              class="text_pole"
-            ></select>
-          </label>
-          <label
-            for="custom-resolution-scene"
-            class="flex-container flexFlowColumn"
-          >
-            <span>Current scene</span>
-            <select id="custom-resolution-scene" class="text_pole"></select>
-          </label>
+          <div class="custom-fields-settings__title">Quick resolutions</div>
           <label class="checkbox_label" for="show_quick_resolution_button">
             <input id="show_quick_resolution_button" type="checkbox" />
             <span>Add quick resolution button</span>

@@ -20,7 +20,16 @@ import {
   IMAGE_RESOLUTION_OPTIONS,
   DEFAULT_RESOLUTION_OPTION,
 } from "./src/image-resolution-options.js";
+import {
+  createCustomGenerationStyle,
+  getBuiltinGenerationStyleDefinition,
+  normalizeGenerationStyleIcon,
+  normalizeGenerationStylePriority,
+  normalizeGenerationStyleResolution,
+  normalizeGenerationStyles,
+} from "./src/generation-styles.js";
 import { DEFAULT_DESCRIPTIONS_PROMPT } from "./src/character-details-prompts.js";
+import { Popup } from "../../../popup.js";
 
 //You'll likely need to import some other functions from the main script
 import { saveSettingsDebounced } from "../../../../script.js";
@@ -32,14 +41,8 @@ const DEFAULT_JSON_INTERPRETATION_PROMPT =
   "Interpretation for clothing state (authoritative):\n- The JSON is the source of truth for what is currently worn.\n- In narration, mention only the outermost visible layers and items with state=partial that are visible.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
 const DEFAULT_PLAIN_TEXT_INTERPRETATION_PROMPT =
   "Interpretation for clothing state (authoritative):\n- The plain-text clothing list is the source of truth for what is currently worn.\n- In narration, mention only currently visible outer layers and partially visible items.\n- Do not mention covered inner layers while they are still covered.\n- Covered layers are included for continuity only; if outer layers are removed later, newly revealed layers must match this data and story logic.\n- Keep clothing continuity logically consistent with scene progression.";
-const resolutionSelectMappings = [
-  { selector: "#custom-resolution-portrait", key: "portrait" },
-  { selector: "#custom-resolution-fullbody", key: "fullbody" },
-  { selector: "#custom-resolution-background", key: "background" },
-  { selector: "#custom-resolution-viewer-eyes", key: "viewer_eyes" },
-  { selector: "#custom-resolution-scene", key: "scene" },
-];
 const TEMPLATE_PATH = "third-party/SillyTavern-CharacterManagerDeredere";
+let selectedGenerationStyleId = "portrait";
 
 function emitImageSettingsChanged() {
   $(document).trigger(IMAGE_SETTINGS_CHANGED_EVENT);
@@ -153,6 +156,7 @@ const defaultSettings = {
     viewer_eyes: DEFAULT_RESOLUTION_OPTION,
     scene: DEFAULT_RESOLUTION_OPTION,
   },
+  generation_styles: [],
   show_quick_resolution_button: false,
   quick_resolutions: [],
   active_quick_resolution: DEFAULT_RESOLUTION_OPTION,
@@ -200,14 +204,12 @@ async function loadSettings() {
     extension_settings[extensionName].mods = [];
   }
 
-  for (const { key } of resolutionSelectMappings) {
-    const value = String(
-      extension_settings[extensionName].custom_resolutions[key] ||
-        DEFAULT_RESOLUTION_OPTION,
+  extension_settings[extensionName].generation_styles =
+    normalizeGenerationStyles(
+      extension_settings[extensionName].generation_styles,
+      extension_settings[extensionName],
     );
-    extension_settings[extensionName].custom_resolutions[key] =
-      value in IMAGE_RESOLUTION_OPTIONS ? value : DEFAULT_RESOLUTION_OPTION;
-  }
+  syncLegacyGenerationStyleSettings();
 
   extension_settings[extensionName].quick_resolutions =
     normalizeQuickResolutionList(
@@ -270,51 +272,113 @@ async function loadSettings() {
     extension_settings[extensionName].visual_command_start ||
       defaultSettings.visual_command_start,
   );
-  $("#closeup_portrait_prompt").val(
-    extension_settings[extensionName].closeup_portrait_prompt ||
-      defaultSettings.closeup_portrait_prompt,
-  );
-  $("#full_body_portrait_prompt").val(
-    extension_settings[extensionName].full_body_portrait_prompt ||
-      defaultSettings.full_body_portrait_prompt,
-  );
-  $("#describe_background_prompt").val(
-    extension_settings[extensionName].describe_background_prompt ||
-      defaultSettings.describe_background_prompt,
-  );
-  $("#describe_viewer_eyes_prompt").val(
-    extension_settings[extensionName].describe_viewer_eyes_prompt ||
-      defaultSettings.describe_viewer_eyes_prompt,
-  );
-  $("#describe_current_scene_prompt").val(
-    extension_settings[extensionName].describe_current_scene_prompt ||
-      defaultSettings.describe_current_scene_prompt,
-  );
   $("#show_quick_resolution_button").prop(
     "checked",
     extension_settings[extensionName].show_quick_resolution_button === true,
   );
-  for (const { selector, key } of resolutionSelectMappings) {
-    $(selector).val(
-      extension_settings[extensionName].custom_resolutions[key] ||
-        DEFAULT_RESOLUTION_OPTION,
-    );
-  }
   updateImageGenerationSettingsState();
   renderCustomFieldsSettings();
+  renderGenerationStyleSettings();
   renderQuickResolutionSettings();
 }
 
-function populateCustomResolutionDropdowns() {
-  for (const { selector } of resolutionSelectMappings) {
-    const select = $(selector);
-    if (!select.length) {
+function getGenerationStylesSettings() {
+  const settings = extension_settings[extensionName];
+  settings.generation_styles = normalizeGenerationStyles(
+    settings.generation_styles,
+    settings,
+  );
+  return settings.generation_styles;
+}
+
+function syncLegacyGenerationStyleSettings() {
+  const settings = extension_settings[extensionName];
+  settings.custom_resolutions = settings.custom_resolutions || {};
+  for (const style of settings.generation_styles || []) {
+    const definition = getBuiltinGenerationStyleDefinition(style.id);
+    if (!definition) {
       continue;
     }
 
-    select.empty();
-    select.append(buildResolutionOptionsMarkup(DEFAULT_RESOLUTION_OPTION));
+    settings[definition.promptKey] = style.prompt;
+    settings.custom_resolutions[definition.resolutionKey] = style.resolution;
   }
+}
+
+function renderGenerationStyleSettings() {
+  const select = $("#generation-style-select");
+  const panel = $("#generation-style-panel");
+  if (!select.length || !panel.length) {
+    return;
+  }
+
+  const styles = getGenerationStylesSettings();
+  if (!styles.some((style) => style.id === selectedGenerationStyleId)) {
+    selectedGenerationStyleId = styles[0]?.id || "";
+  }
+  const selectedStyle = styles.find(
+    (style) => style.id === selectedGenerationStyleId,
+  );
+
+  select.html(
+    styles
+      .map(
+        (style) =>
+          `<option value="${escapeHtml(style.id)}" ${style.id === selectedGenerationStyleId ? "selected" : ""}>${escapeHtml(style.name)}</option>`,
+      )
+      .join(""),
+  );
+
+  if (!selectedStyle) {
+    panel.empty();
+    return;
+  }
+
+  const definition = getBuiltinGenerationStyleDefinition(selectedStyle.id);
+  panel.html(`
+    ${
+      definition
+        ? ""
+        : `<label class="flex-container flexFlowColumn">
+            <span>Name</span>
+            <input class="text_pole" type="text" data-generation-style-field="name" value="${escapeHtml(selectedStyle.name)}" />
+          </label>`
+    }
+    <label class="checkbox_label">
+      <input type="checkbox" data-generation-style-field="showInQuickMenu" ${selectedStyle.showInQuickMenu ? "checked" : ""} />
+      <span>Show in quick menu</span>
+    </label>
+    <label class="flex-container flexFlowColumn">
+      <span>Priority</span>
+      <input class="text_pole" type="number" min="-9999" max="9999" step="1" data-generation-style-field="priority" value="${selectedStyle.priority}" />
+    </label>
+    <label class="flex-container flexFlowColumn">
+      <span>Icon</span>
+      <input class="text_pole" type="text" data-generation-style-field="icon" value="${escapeHtml(selectedStyle.icon)}" placeholder="fa-question" />
+    </label>
+    <div class="flex-container flexFlowColumn">
+      <div class="title_restorable">
+        <span>Prompt</span>
+        ${
+          definition
+            ? `<button class="menu_button" type="button" data-action="reset-generation-style-prompt" title="Reset prompt to default"><i class="fa-solid fa-rotate-left"></i></button>`
+            : ""
+        }
+      </div>
+      <textarea class="text_pole" rows="9" data-generation-style-field="prompt">${escapeHtml(selectedStyle.prompt)}</textarea>
+    </div>
+    <label class="flex-container flexFlowColumn">
+      <span>Resolution</span>
+      <select class="text_pole" data-generation-style-field="resolution">
+        ${buildResolutionOptionsMarkup(selectedStyle.resolution)}
+      </select>
+    </label>
+    ${
+      definition
+        ? ""
+        : `<button class="menu_button generation-style-settings__delete" type="button" data-action="delete-generation-style"><i class="fa-solid fa-trash"></i><span>Delete style</span></button>`
+    }
+  `);
 }
 
 function renderQuickResolutionSettings() {
@@ -346,7 +410,7 @@ function updateImageGenerationSettingsState() {
   );
   const disabled = !hasImageGeneration;
   const controls = $(
-    "#show_image_generation_buttons, #remove_image_prompt_newlines, #visual_command_start, #closeup_portrait_prompt, #full_body_portrait_prompt, #describe_background_prompt, #describe_viewer_eyes_prompt, #describe_current_scene_prompt, #custom-resolution-portrait, #custom-resolution-fullbody, #custom-resolution-background, #custom-resolution-viewer-eyes, #custom-resolution-scene, #show_quick_resolution_button, #quick-resolutions-add, #quick-resolutions-list select, #quick-resolutions-list button, #reset-visual-command-start-prompt, #reset-closeup-portrait-prompt, #reset-full-body-portrait-prompt, #reset-describe-background-prompt, #reset-describe-viewer-eyes-prompt, #reset-describe-current-scene-prompt",
+    "#show_image_generation_buttons, #remove_image_prompt_newlines, #visual_command_start, #generation-style-select, #generation-style-add, #generation-style-panel input, #generation-style-panel textarea, #generation-style-panel select, #generation-style-panel button, #show_quick_resolution_button, #quick-resolutions-add, #quick-resolutions-list select, #quick-resolutions-list button, #reset-visual-command-start-prompt",
   );
   controls.prop("disabled", disabled);
   $("#image-generation-required-note").toggleClass("displayNone", !disabled);
@@ -1109,7 +1173,6 @@ jQuery(async () => {
   // Left should be extensions that deal with system functions and right should be visual/UI related
   $("#extensions_settings").append(settingsHtml);
   appendRightPanel(panelHtml);
-  populateCustomResolutionDropdowns();
 
   // These are examples of listening for events
   $("#descriptions_prompt").on("input", (event) => {
@@ -1198,57 +1261,117 @@ jQuery(async () => {
     saveSettingsDebounced();
   });
 
-  $("#closeup_portrait_prompt").on("input", (event) => {
-    extension_settings[extensionName].closeup_portrait_prompt = $(
-      event.target,
-    ).val();
+  $("#generation-style-select").on("change", (event) => {
+    selectedGenerationStyleId = String($(event.target).val() || "");
+    renderGenerationStyleSettings();
+    updateImageGenerationSettingsState();
+  });
+
+  $("#generation-style-add").on("click", () => {
+    const styles = getGenerationStylesSettings();
+    const newStyle = createCustomGenerationStyle(styles);
+    styles.push(newStyle);
+    selectedGenerationStyleId = newStyle.id;
+    renderGenerationStyleSettings();
+    updateImageGenerationSettingsState();
+    emitImageSettingsChanged();
     saveSettingsDebounced();
   });
 
-  $("#full_body_portrait_prompt").on("input", (event) => {
-    extension_settings[extensionName].full_body_portrait_prompt = $(
-      event.target,
-    ).val();
-    saveSettingsDebounced();
-  });
-
-  $("#describe_background_prompt").on("input", (event) => {
-    extension_settings[extensionName].describe_background_prompt = $(
-      event.target,
-    ).val();
-    saveSettingsDebounced();
-  });
-
-  $("#describe_viewer_eyes_prompt").on("input", (event) => {
-    extension_settings[extensionName].describe_viewer_eyes_prompt = $(
-      event.target,
-    ).val();
-    saveSettingsDebounced();
-  });
-
-  $("#describe_current_scene_prompt").on("input", (event) => {
-    extension_settings[extensionName].describe_current_scene_prompt = $(
-      event.target,
-    ).val();
-    saveSettingsDebounced();
-  });
-
-  for (const { selector, key } of resolutionSelectMappings) {
-    $(selector).on("change", (event) => {
-      extension_settings[extensionName].custom_resolutions = extension_settings[
-        extensionName
-      ].custom_resolutions || { ...defaultSettings.custom_resolutions };
-      const nextValue = String(
-        $(event.target).val() || DEFAULT_RESOLUTION_OPTION,
+  $("#generation-style-panel").on(
+    "input change",
+    "[data-generation-style-field]",
+    (event) => {
+      const style = getGenerationStylesSettings().find(
+        (item) => item.id === selectedGenerationStyleId,
       );
-      extension_settings[extensionName].custom_resolutions[key] =
-        nextValue in IMAGE_RESOLUTION_OPTIONS
-          ? nextValue
-          : DEFAULT_RESOLUTION_OPTION;
+      if (!style) {
+        return;
+      }
+
+      const field = String($(event.target).data("generationStyleField") || "");
+      if (field === "name" && !style.builtin) {
+        style.name = String($(event.target).val() || "").trim() || "New style";
+      } else if (field === "showInQuickMenu") {
+        style.showInQuickMenu = Boolean($(event.target).prop("checked"));
+      } else if (field === "priority") {
+        style.priority = normalizeGenerationStylePriority(
+          $(event.target).val(),
+        );
+      } else if (field === "icon") {
+        style.icon = normalizeGenerationStyleIcon($(event.target).val());
+      } else if (field === "prompt") {
+        style.prompt = String($(event.target).val() || "");
+      } else if (field === "resolution") {
+        style.resolution = normalizeGenerationStyleResolution(
+          $(event.target).val(),
+        );
+      } else {
+        return;
+      }
+
+      syncLegacyGenerationStyleSettings();
+      if (event.type === "change" && (field === "name" || field === "icon")) {
+        renderGenerationStyleSettings();
+        updateImageGenerationSettingsState();
+      }
       emitImageSettingsChanged();
       saveSettingsDebounced();
-    });
-  }
+    },
+  );
+
+  $("#generation-style-panel").on(
+    "click",
+    "[data-action='reset-generation-style-prompt']",
+    () => {
+      const style = getGenerationStylesSettings().find(
+        (item) => item.id === selectedGenerationStyleId,
+      );
+      const definition = getBuiltinGenerationStyleDefinition(style?.id);
+      if (!style || !definition) {
+        return;
+      }
+
+      style.prompt = defaultSettings[definition.promptKey] || "";
+      syncLegacyGenerationStyleSettings();
+      renderGenerationStyleSettings();
+      updateImageGenerationSettingsState();
+      emitImageSettingsChanged();
+      saveSettingsDebounced();
+    },
+  );
+
+  $("#generation-style-panel").on(
+    "click",
+    "[data-action='delete-generation-style']",
+    async () => {
+      const styles = getGenerationStylesSettings();
+      const style = styles.find(
+        (item) => item.id === selectedGenerationStyleId,
+      );
+      if (!style || style.builtin) {
+        return;
+      }
+
+      const confirmed = await Popup.show.confirm(
+        "Delete style",
+        `Delete “${style.name}”?`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      extension_settings[extensionName].generation_styles = styles.filter(
+        (item) => item.id !== style.id,
+      );
+      selectedGenerationStyleId =
+        extension_settings[extensionName].generation_styles[0]?.id || "";
+      renderGenerationStyleSettings();
+      updateImageGenerationSettingsState();
+      emitImageSettingsChanged();
+      saveSettingsDebounced();
+    },
+  );
 
   $("#quick-resolutions-add").on("click", () => {
     const quickResolutions = getQuickResolutionSettings();
@@ -1340,49 +1463,6 @@ jQuery(async () => {
       saveSettingsDebounced();
     },
   );
-
-  $("#reset-closeup-portrait-prompt").on("click", () => {
-    extension_settings[extensionName].closeup_portrait_prompt =
-      defaultSettings.closeup_portrait_prompt;
-    $("#closeup_portrait_prompt").val(defaultSettings.closeup_portrait_prompt);
-    saveSettingsDebounced();
-  });
-
-  $("#reset-full-body-portrait-prompt").on("click", () => {
-    extension_settings[extensionName].full_body_portrait_prompt =
-      defaultSettings.full_body_portrait_prompt;
-    $("#full_body_portrait_prompt").val(
-      defaultSettings.full_body_portrait_prompt,
-    );
-    saveSettingsDebounced();
-  });
-
-  $("#reset-describe-background-prompt").on("click", () => {
-    extension_settings[extensionName].describe_background_prompt =
-      defaultSettings.describe_background_prompt;
-    $("#describe_background_prompt").val(
-      defaultSettings.describe_background_prompt,
-    );
-    saveSettingsDebounced();
-  });
-
-  $("#reset-describe-viewer-eyes-prompt").on("click", () => {
-    extension_settings[extensionName].describe_viewer_eyes_prompt =
-      defaultSettings.describe_viewer_eyes_prompt;
-    $("#describe_viewer_eyes_prompt").val(
-      defaultSettings.describe_viewer_eyes_prompt,
-    );
-    saveSettingsDebounced();
-  });
-
-  $("#reset-describe-current-scene-prompt").on("click", () => {
-    extension_settings[extensionName].describe_current_scene_prompt =
-      defaultSettings.describe_current_scene_prompt;
-    $("#describe_current_scene_prompt").val(
-      defaultSettings.describe_current_scene_prompt,
-    );
-    saveSettingsDebounced();
-  });
 
   $("#reset-descriptions-prompt").on("click", () => {
     extension_settings[extensionName].descriptions_prompt =
