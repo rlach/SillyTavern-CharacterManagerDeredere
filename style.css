@@ -608,7 +608,8 @@
   align-self: center;
 }
 
-.mod-item.mod-item--character {
+#character-details-mods-panel.character-mods-panel
+  .mod-item.mod-item--character {
   background-color: color-mix(
     in oklab,
     #58a6ff 18%,
@@ -616,7 +617,7 @@
   );
 }
 
-.mod-item.mod-item--active {
+#character-details-mods-panel.character-mods-panel .mod-item.mod-item--active {
   background-color: color-mix(
     in oklab,
     #91d7a4 24%,
