@@ -1100,19 +1100,30 @@ async function askGuideForPrompt(data, context = getContext()) {
       <section class="character-details__guide-characters" aria-labelledby="character-details-guide-characters-title">
         <h3 id="character-details-guide-characters-title">Who to include</h3>
         <div class="character-details__guide-character-list">
-          ${guideCharacters.length ? guideCharacters.map((character) => {
-            const characterId = String(character?.id || "").trim();
-            const characterName = String(character?.name || "Unnamed").trim() || "Unnamed";
-            const isPresent = character?.presence === true;
-            const avatarSource = getCharacterAvatarSource(character, context, avatarMap);
-            const avatar = avatarSource
-              ? `<img class="character-details__guide-character-avatar" src="${escapeHtml(avatarSource)}" alt="" />`
-              : `<span class="character-details__guide-character-initials">${escapeHtml(getInitials(characterName))}</span>`;
-            return `<button class="character-details__guide-character ${isPresent ? "is-present" : "is-absent"}" type="button" data-character-id="${escapeHtml(characterId)}" aria-pressed="${isPresent}" title="${escapeHtml(characterName)}: ${isPresent ? "included" : "excluded"}">
+          ${
+            guideCharacters.length
+              ? guideCharacters
+                  .map((character) => {
+                    const characterId = String(character?.id || "").trim();
+                    const characterName =
+                      String(character?.name || "Unnamed").trim() || "Unnamed";
+                    const isPresent = character?.presence === true;
+                    const avatarSource = getCharacterAvatarSource(
+                      character,
+                      context,
+                      avatarMap,
+                    );
+                    const avatar = avatarSource
+                      ? `<img class="character-details__guide-character-avatar" src="${escapeHtml(avatarSource)}" alt="" />`
+                      : `<span class="character-details__guide-character-initials">${escapeHtml(getInitials(characterName))}</span>`;
+                    return `<button class="character-details__guide-character ${isPresent ? "is-present" : "is-absent"}" type="button" data-character-id="${escapeHtml(characterId)}" aria-pressed="${isPresent}" title="${escapeHtml(characterName)}: ${isPresent ? "included" : "excluded"}">
               ${avatar}
               <span class="character-details__guide-character-name">${escapeHtml(characterName)}</span>
             </button>`;
-          }).join("") : '<span class="character-details__guide-character-empty">No characters available.</span>'}
+                  })
+                  .join("")
+              : '<span class="character-details__guide-character-empty">No characters available.</span>'
+          }
         </div>
       </section>
     </div>
@@ -1513,9 +1524,13 @@ async function generateCharacterImage(mode, triggerButton = null) {
   if (mode === "scene") {
     const presentAll = getPresentCharacters(generationData);
     charactersPresentLine = buildCharactersPresentLine(presentAll);
-    characterDescription = buildCharactersVisualDescriptions(generationData, presentAll, {
-      extraByCharacterId: afterCharModsByCharacterId,
-    });
+    characterDescription = buildCharactersVisualDescriptions(
+      generationData,
+      presentAll,
+      {
+        extraByCharacterId: afterCharModsByCharacterId,
+      },
+    );
     scenePrompt = String(
       extension_settings?.[extensionName]?.describe_current_scene_prompt || "",
     ).trim();
@@ -3047,17 +3062,17 @@ function renderLayers(layers, depth, inheritedOcclusion) {
           <button class="layer-state" type="button" data-action="cycle-state" title="Toggle state">${stateLabel}</button>
           ${visibilityButtonHtml}
           <input class="layer-name text_pole" type="text" value="${escapeHtml(layer.name)}" data-field="layer-name" data-layer-id="${layer.id}" />
-          <div class="layer-lock-wrapper">
+          <div class="clothing-floating-actions layer-floating-actions">
+            <button class="layer-action icon-button" type="button" data-action="add-child" title="Add child">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+            <button class="layer-action icon-button ${deleteClass}" type="button" data-action="delete-layer" title="Delete layer" ${canDelete ? "" : "disabled"}>
+              <i class="fa-solid fa-trash"></i>
+            </button>
             <button class="layer-action icon-button layer-lock-button" type="button" data-action="toggle-lock" title="${lockTitle}">
               <i class="fa-solid ${lockIcon}"></i>
             </button>
           </div>
-          <button class="layer-action icon-button" type="button" data-action="add-child" title="Add child">
-            <i class="fa-solid fa-plus"></i>
-          </button>
-          <button class="layer-action icon-button ${deleteClass}" type="button" data-action="delete-layer" title="Delete layer" ${canDelete ? "" : "disabled"}>
-            <i class="fa-solid fa-trash"></i>
-          </button>
         </div>
         ${childrenHtml}
       `;
@@ -3094,17 +3109,17 @@ function renderGroups(character) {
             <button class="group-action icon-button group-active-toggle ${isActive ? "is-on" : ""}" type="button" data-action="set-active-group" title="${activeTitle}">
               <i class="fa-solid ${activeIcon}"></i>
             </button>
-            <div class="group-lock-wrapper">
+            <div class="clothing-floating-actions group-floating-actions">
+              <button class="group-action icon-button" type="button" data-action="add-layer" title="Add layer">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+              <button class="group-action icon-button ${deleteClass}" type="button" data-action="delete-group" title="Delete group" ${canDelete ? "" : "disabled"}>
+                <i class="fa-solid fa-trash"></i>
+              </button>
               <button class="group-action icon-button group-lock-button" type="button" data-action="toggle-lock" title="${lockTitle}">
                 <i class="fa-solid ${lockIcon}"></i>
               </button>
             </div>
-            <button class="group-action icon-button" type="button" data-action="add-layer" title="Add layer">
-              <i class="fa-solid fa-plus"></i>
-            </button>
-            <button class="group-action icon-button ${deleteClass}" type="button" data-action="delete-group" title="Delete group" ${canDelete ? "" : "disabled"}>
-              <i class="fa-solid fa-trash"></i>
-            </button>
             </div>
             <div class="clothing-group__content ${collapsedClass}">
                 ${contentHtml}
@@ -3381,14 +3396,18 @@ async function showAiGenerationRequestPopup(title, description) {
       <p>${escapeHtml(description)}</p>
       <label class="text_label" for="character-details-generation-request">Request</label>
       <textarea id="character-details-generation-request" class="text_pole" rows="2"></textarea>
-      ${visionSupported ? `
+      ${
+        visionSupported
+          ? `
         <label class="text_label" for="character-details-generation-images">
           Reference images
           <small>Sent to the model as visual references.</small>
         </label>
         <input id="character-details-generation-images" type="file" accept="image/*" multiple />
         <div id="character-details-generation-image-preview" class="character-details__generation-image-preview" aria-live="polite"></div>
-      ` : ""}
+      `
+          : ""
+      }
     </div>`,
   );
   let result = null;
@@ -3402,7 +3421,9 @@ async function showAiGenerationRequestPopup(title, description) {
     }
 
     for (const [index, reference] of selectedReferenceImages.entries()) {
-      const item = $("<div>", { class: "character-details__generation-image-item" });
+      const item = $("<div>", {
+        class: "character-details__generation-image-item",
+      });
       const image = $("<img>", {
         src: reference.url,
         alt: reference.file.name,
@@ -3427,20 +3448,25 @@ async function showAiGenerationRequestPopup(title, description) {
     }
   };
 
-  content.find("#character-details-generation-images").on("change", function () {
-    const files = Array.from(this.files || []);
-    for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        toastr.warning(`"${file.name}" is not a supported image.`, "Character Details");
-        continue;
+  content
+    .find("#character-details-generation-images")
+    .on("change", function () {
+      const files = Array.from(this.files || []);
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) {
+          toastr.warning(
+            `"${file.name}" is not a supported image.`,
+            "Character Details",
+          );
+          continue;
+        }
+
+        selectedReferenceImages.push({ file, url: URL.createObjectURL(file) });
       }
 
-      selectedReferenceImages.push({ file, url: URL.createObjectURL(file) });
-    }
-
-    this.value = "";
-    renderReferenceImagePreviews();
-  });
+      this.value = "";
+      renderReferenceImagePreviews();
+    });
 
   const popup = new Popup(content, POPUP_TYPE.TEXT, "", {
     okButton: "Generate",
@@ -3451,26 +3477,33 @@ async function showAiGenerationRequestPopup(title, description) {
         return true;
       }
 
-      const request = String(content.find("#character-details-generation-request").val() || "").trim();
+      const request = String(
+        content.find("#character-details-generation-request").val() || "",
+      ).trim();
       if (!request) {
         toastr.warning("Request cannot be empty.", "Character Details");
         return false;
       }
 
       try {
-        const referenceImages = await Promise.all(selectedReferenceImages.map(async ({ file }) => {
-          const dataUrl = await readFileAsDataUrl(file);
-          if (!dataUrl.startsWith("data:image/")) {
-            throw new Error(`"${file.name}" is not a supported image.`);
-          }
+        const referenceImages = await Promise.all(
+          selectedReferenceImages.map(async ({ file }) => {
+            const dataUrl = await readFileAsDataUrl(file);
+            if (!dataUrl.startsWith("data:image/")) {
+              throw new Error(`"${file.name}" is not a supported image.`);
+            }
 
-          return dataUrl;
-        }));
+            return dataUrl;
+          }),
+        );
 
         result = { request, referenceImages };
         return true;
       } catch (error) {
-        toastr.error(error?.message || "Failed to read reference images.", "Character Details");
+        toastr.error(
+          error?.message || "Failed to read reference images.",
+          "Character Details",
+        );
         return false;
       }
     },

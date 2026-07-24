@@ -1940,6 +1940,12 @@
   transition: filter var(--animation-duration-2x);
 }
 
+.layer-state {
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+}
+
 .group-active-toggle.is-on {
   color: var(--active);
 }
@@ -1981,7 +1987,7 @@
 
 .clothing-layer {
   display: grid;
-  grid-template-columns: auto auto auto 1fr auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   padding: 6px;
@@ -1990,6 +1996,10 @@
   background-color: var(--SmartThemeBlurTintColor);
   margin-left: calc(var(--depth) * 12px);
   position: relative;
+}
+
+.clothing-layer:has(.layer-visibility-toggle) {
+  grid-template-columns: auto auto auto minmax(0, 1fr);
 }
 
 .clothing-layer.is-dragging {
@@ -2012,18 +2022,21 @@
   min-width: 0;
 }
 
-.layer-lock-wrapper,
-.group-lock-wrapper {
+.clothing-floating-actions {
   position: absolute;
   top: -8px;
   right: -8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   z-index: 10;
 }
 
-.layer-lock-button,
-.group-lock-button {
+.clothing-floating-actions .icon-button {
   width: 20px !important;
   height: 20px !important;
+  min-height: 20px !important;
+  padding: 0 !important;
   font-size: calc(var(--mainFontSize) * 0.7) !important;
   border-radius: 4px !important;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
