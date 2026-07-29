@@ -13,6 +13,7 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
     initialLocalState = false,
     initialMultiselect = false,
     initialImageTypes = {},
+    includePosition = true,
     allowDelete = false,
     allowConvertToGroup = false,
   } = config;
@@ -23,6 +24,7 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
     escapeHtml,
     normalizeRequiredModShortname,
     normalizeModPosition,
+    MOD_POSITION_AFTER_CHAR,
     MOD_POSITION_DEFINITIONS,
     MOD_IMAGE_TYPE_DEFINITIONS,
     normalizeModImageTypes,
@@ -53,22 +55,26 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
       });
     }
 
-    customInputs.push(
-      {
-        id: "st_extension_mod_shortname",
-        label: "Shortname",
-        type: "text",
-        defaultState: nextShortname,
-      },
-      {
+    customInputs.push({
+      id: "st_extension_mod_shortname",
+      label: "Shortname",
+      type: "text",
+      defaultState: nextShortname,
+    });
+
+    if (includePosition) {
+      customInputs.push({
         id: "st_extension_mod_position",
         label: "Position",
         type: "text",
         defaultState: nextPosition,
-      },
+      });
+    }
+
+    customInputs.push(
       {
         id: "st_extension_mod_after_char_name",
-        label: "After character (used only for After char X)",
+        label: "Character affected",
         type: "text",
         defaultState: nextAfterCharName,
       },
@@ -140,73 +146,92 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
             : []),
         ],
         onOpen: (openedPopup) => {
-          const input = openedPopup?.dlg?.querySelector(
+          const dialogRoot = openedPopup?.dlg;
+          const positionInput = dialogRoot?.querySelector(
             "#st_extension_mod_position",
           );
-          if (!(input instanceof HTMLInputElement)) {
-            return;
-          }
-
-          const positionWrap = document.createElement("div");
-          positionWrap.classList.add(
-            "mod-editor__position-wrap",
-            "mod-item__position-wrap",
+          const afterCharInput = dialogRoot?.querySelector(
+            "#st_extension_mod_after_char_name",
           );
-          const valueInput = document.createElement("input");
-          valueInput.type = "hidden";
-          valueInput.id = input.id;
-          valueInput.value = normalizeModPosition(nextPosition);
+          const afterCharRow = afterCharInput?.closest("label");
 
-          const trigger = document.createElement("button");
-          trigger.type = "button";
-          trigger.classList.add("menu_button", "mod-editor__position-trigger");
-          const menu = document.createElement("div");
-          menu.classList.add(
-            "mod-item__position-popup",
-            "mod-editor__position-popup",
-          );
-
-          const setSelectedPosition = (position) => {
-            const selected =
-              MOD_POSITION_DEFINITIONS.find(
-                (definition) => definition.key === position,
-              ) || MOD_POSITION_DEFINITIONS[0];
-            valueInput.value = selected.key;
-            trigger.innerHTML = `<i class="fa-solid ${selected.icon}"></i><span>${selected.label}</span><i class="fa-solid fa-chevron-down"></i>`;
-            menu
-              .querySelectorAll(".mod-item__position-option")
-              .forEach((option) => {
-                option.classList.toggle(
-                  "is-active",
-                  option.dataset.position === selected.key,
-                );
-              });
+          const updateAfterCharVisibility = (position) => {
+            if (!afterCharRow) {
+              return;
+            }
+            const showAfterChar =
+              normalizeModPosition(position) === MOD_POSITION_AFTER_CHAR;
+            afterCharRow.style.display = showAfterChar ? "" : "none";
           };
 
-          for (const definition of MOD_POSITION_DEFINITIONS) {
-            const option = document.createElement("button");
-            option.type = "button";
-            option.classList.add("mod-item__position-option");
-            option.dataset.position = definition.key;
-            option.innerHTML = `<i class="fa-solid ${definition.icon}"></i><span>${definition.label}</span>`;
-            option.addEventListener("click", () => {
-              setSelectedPosition(definition.key);
-              menu.classList.remove("is-open");
-            });
-            menu.append(option);
-          }
+          if (positionInput instanceof HTMLInputElement) {
+            const positionWrap = document.createElement("div");
+            positionWrap.classList.add(
+              "mod-editor__position-wrap",
+              "mod-item__position-wrap",
+            );
+            const valueInput = document.createElement("input");
+            valueInput.type = "hidden";
+            valueInput.id = positionInput.id;
+            valueInput.value = normalizeModPosition(nextPosition);
 
-          trigger.addEventListener("click", () => {
-            menu.classList.toggle("is-open");
-          });
-          setSelectedPosition(valueInput.value);
-          positionWrap.append(valueInput, trigger, menu);
-          input.replaceWith(positionWrap);
+            const trigger = document.createElement("button");
+            trigger.type = "button";
+            trigger.classList.add(
+              "menu_button",
+              "mod-editor__position-trigger",
+            );
+            const menu = document.createElement("div");
+            menu.classList.add(
+              "mod-item__position-popup",
+              "mod-editor__position-popup",
+            );
+
+            const setSelectedPosition = (position) => {
+              const selected =
+                MOD_POSITION_DEFINITIONS.find(
+                  (definition) => definition.key === position,
+                ) || MOD_POSITION_DEFINITIONS[0];
+              valueInput.value = selected.key;
+              trigger.innerHTML = `<i class="fa-solid ${selected.icon}"></i><span>${selected.label}</span><i class="fa-solid fa-chevron-down"></i>`;
+              menu
+                .querySelectorAll(".mod-item__position-option")
+                .forEach((option) => {
+                  option.classList.toggle(
+                    "is-active",
+                    option.dataset.position === selected.key,
+                  );
+                });
+              updateAfterCharVisibility(selected.key);
+            };
+
+            for (const definition of MOD_POSITION_DEFINITIONS) {
+              const option = document.createElement("button");
+              option.type = "button";
+              option.classList.add("mod-item__position-option");
+              option.dataset.position = definition.key;
+              option.innerHTML = `<i class="fa-solid ${definition.icon}"></i><span>${definition.label}</span>`;
+              option.addEventListener("click", () => {
+                setSelectedPosition(definition.key);
+                menu.classList.remove("is-open");
+              });
+              menu.append(option);
+            }
+
+            trigger.addEventListener("click", () => {
+              menu.classList.toggle("is-open");
+            });
+            setSelectedPosition(valueInput.value);
+            positionWrap.append(valueInput, trigger, menu);
+            positionInput.replaceWith(positionWrap);
+          } else {
+            updateAfterCharVisibility(nextPosition);
+          }
 
           const imageTypesHeading = document.createElement("div");
           imageTypesHeading.classList.add("mod-editor__image-types-heading");
           imageTypesHeading.textContent = "Use mod in";
-          const firstImageTypeLabel = openedPopup.dlg
+          const firstImageTypeLabel = dialogRoot
             .querySelector(
               `#st_extension_mod_image_type_${MOD_IMAGE_TYPE_DEFINITIONS[0]?.key}`,
             )
@@ -218,7 +243,7 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
           }
 
           for (const definition of MOD_IMAGE_TYPE_DEFINITIONS) {
-            const checkbox = openedPopup.dlg.querySelector(
+            const checkbox = dialogRoot.querySelector(
               `#st_extension_mod_image_type_${definition.key}`,
             );
             const label = checkbox?.closest("label");
@@ -256,9 +281,11 @@ export async function showModItemEditorPopup(config = {}, deps = {}) {
     const shortnameInput = normalizeRequiredModShortname(
       popup.inputResults?.get("st_extension_mod_shortname"),
     );
-    const positionInput = normalizeModPosition(
-      popup.inputResults?.get("st_extension_mod_position"),
-    );
+    const positionInput = includePosition
+      ? normalizeModPosition(
+          popup.inputResults?.get("st_extension_mod_position"),
+        )
+      : normalizeModPosition(nextPosition);
     const afterCharNameInput = String(
       popup.inputResults?.get("st_extension_mod_after_char_name") || "",
     ).trim();

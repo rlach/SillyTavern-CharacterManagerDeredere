@@ -225,6 +225,7 @@ async function showModItemEditorPopup({
   initialLocalState = false,
   initialMultiselect = false,
   initialImageTypes = {},
+  includePosition = true,
   allowDelete = false,
   allowConvertToGroup = false,
 } = {}) {
@@ -243,6 +244,7 @@ async function showModItemEditorPopup({
       initialLocalState,
       initialMultiselect,
       initialImageTypes,
+      includePosition,
       allowDelete,
       allowConvertToGroup,
     },
@@ -252,6 +254,7 @@ async function showModItemEditorPopup({
       escapeHtml,
       normalizeRequiredModShortname,
       normalizeModPosition,
+      MOD_POSITION_AFTER_CHAR,
       MOD_POSITION_DEFINITIONS,
       MOD_IMAGE_TYPE_DEFINITIONS,
       normalizeModImageTypes,
@@ -1472,6 +1475,9 @@ export async function handleAddModToGroup(actionOwner) {
     okButton: "Add",
     shortnameValue: "",
     detailsValue: "",
+    initialPosition: mods[index].position,
+    initialAfterCharName: mods[index].afterCharName,
+    includePosition: false,
     includeModSettings: false,
   });
 
@@ -1490,6 +1496,14 @@ export async function handleAddModToGroup(actionOwner) {
     mods[index].isMultiselect === true
       ? [...new Set([...(mods[index].selectedItemIds || []), nextItem.id])]
       : [nextItem.id];
+
+  if (normalizeModPosition(mods[index].position) === MOD_POSITION_AFTER_CHAR) {
+    mods[index].afterCharName =
+      normalizeModAfterCharName(edited.afterCharName) ||
+      normalizeModAfterCharName(mods[index].afterCharName) ||
+      getDefaultAfterCharName();
+  }
+
   patchUiState({ openModGroupForId: null });
   saveModsSettings(mods);
 }
